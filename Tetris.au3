@@ -26,6 +26,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
 #ce
 
+#include <WinAPIConstants.au3>
 #include <WinAPIGDI.au3>
 #include <WinAPISys.au3>
 #include <WinAPIMisc.au3>
@@ -365,7 +366,7 @@ Global $KEYACTIVE = False
 
 Global $KEYPROC = DllCallbackRegister('KeyProc', 'long', 'int;wparam;lparam')
 Global $MODULE  = _WinAPI_GetModuleHandle(0)
-Global $KEYHOOK = _WinAPI_SetWindowsHookEx($WH_KEYBOARD_LL, DllCallbackGetPtr($KEYPROC), $MODULE)
+Global $KEYHOOK = _WinAPI_SetWindowsHookEx($WH_KEYBOARD_LL, DllCallbackGetPtr($KEYPROC), $MODULE) ;$WH_KEYBOARD_LL requires #include <WinAPIConstants.au3>
 Global $LASTKEYPRESSED = 0
 
 #EndRegion
