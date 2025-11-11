@@ -12,7 +12,8 @@ fourtris 2.0
 cherry-pick from others' commit
 5. [x] include <WinAPIConstants.au3> to make line 367 work
 6. bag rng (torchlight) 
-7. fumen (chouhy)
+7. [x] fumen (chouhy)
+7.1 [x] switch from fumen.zui.jp/ -> fumen.sixwi.de/ , will return with harddrop.com/fumen/ if CCRed ever got it approved (</3>)
 
 qol:
 >settings
