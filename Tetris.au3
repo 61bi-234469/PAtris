@@ -1,9 +1,8 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_Icon=icon.ico
-#AutoIt3Wrapper_Outfile=build\current\four-tris-x86.exe
-#AutoIt3Wrapper_Outfile_x64=build\current\four-tris-x64.exe
+#AutoIt3Wrapper_Outfile=four-tris-x86.exe
+#AutoIt3Wrapper_Outfile_x64=four-tris-x64.exe
 #AutoIt3Wrapper_Compile_Both=y
-#AutoIt3Wrapper_UseX64=y
 #AutoIt3Wrapper_Res_Comment=Open-sourced training tool for block-stacking games.
 #AutoIt3Wrapper_Res_Description=four-tris
 #AutoIt3Wrapper_Res_Fileversion=1.5.2.0
@@ -277,6 +276,11 @@ Global Enum $KEYCODE, $KEYACTION, $KEYSTATE, $KEYTIME, $KEYEDGE
 Global		$KEYBINDS[21][5]
 Global		$HOTKEYS [ 6][2]
 
+;color palette hotkeys
+Global Const $PALETTE_HOTKEY_COUNT = 8
+Global $ColorHotkey[$PALETTE_HOTKEY_COUNT]       ; キーコード (0 = 未割り当て)
+Global $ColorHotkeyLabel[$PALETTE_HOTKEY_COUNT]  ; 表示用ラベル
+
 ;edge
 $KEYBINDS[0 ][4] = 0
 $KEYBINDS[1 ][4] = 0
@@ -359,6 +363,45 @@ $KEYBINDS[18][0] = 53 ;5
 $KEYBINDS[19][0] = 54 ;6
 $KEYBINDS[20][0] = 55 ;7
 
+; カラーパレットホットキー読み込み (競合検証付き)
+For $__i = 0 To $PALETTE_HOTKEY_COUNT - 1
+	Local $__RawKey = IniRead('settings.ini', 'SETTINGS', 'COLOR_HOTKEY_' & $__i, '')
+	Local $__KeyCode = ($__RawKey = '' ? 0 : Number($__RawKey))
+	Local $__Valid = True
+
+	If $__KeyCode <= 0 Then
+		$__Valid = False
+	Else
+		; 既存キーバインドとの競合チェック (KB0-KB9, KB12, KB13)
+		For $__j = 0 To 9
+			If $KEYBINDS[$__j][0] = $__KeyCode Then
+				$__Valid = False
+				ExitLoop
+			EndIf
+		Next
+		If $__Valid And $KEYBINDS[12][0] = $__KeyCode Then $__Valid = False
+		If $__Valid And $KEYBINDS[13][0] = $__KeyCode Then $__Valid = False
+
+		; パレット内重複チェック (先勝ち)
+		If $__Valid Then
+			For $__j = 0 To $__i - 1
+				If $ColorHotkey[$__j] = $__KeyCode Then
+					$__Valid = False
+					ExitLoop
+				EndIf
+			Next
+		EndIf
+	EndIf
+
+	If $__Valid Then
+		$ColorHotkey[$__i] = $__KeyCode
+		$ColorHotkeyLabel[$__i] = vKey($__KeyCode)
+	Else
+		$ColorHotkey[$__i] = 0
+		$ColorHotkeyLabel[$__i] = ''
+	EndIf
+Next
+
 $HOTKEYS [0 ][0] = '^z'
 $HOTKEYS [1 ][0] = '^+z'
 $HOTKEYS [2 ][0] = '^y'
@@ -426,10 +469,10 @@ $PAINT[8][2] = BoundBox($AlignR + 50, $AlignT + 370, 15, 15)
 
 #EndRegion BUTTONS
 #Region SETTINGS TAB
-Global $SEPARATORS[4][2] = [['COLORS', 5], ['KEYBINDS', 195], ['GAMEPLAY', 490], ['SOUND', 770]]
-Global $SETTINGS[26][7]
+Global $SEPARATORS[5][2] = [['COLORS', 5], ['KEYBINDS', 195], ['PALETTE', 455], ['GAMEPLAY', 590], ['SOUND', 870]]
+Global $SETTINGS[34][7]
 Global $SETTINGS_ACTIVE = False
-Global $SETTINGS_PANELSIZE = 900
+Global $SETTINGS_PANELSIZE = 1000
 Local  $Y
 
 ;colors
@@ -464,8 +507,20 @@ $SETTINGS[9 ][2] = BoundBox($AlignC-92, $Y+215, 90,35)
 $SETTINGS[23][2] = BoundBox($AlignC+2,  $Y+215, 90,35)
 
 
-;gameplay
+;palette hotkeys
 $Y = $SEPARATORS[2][1]+37+5
+$SETTINGS[26][2] = BoundBox($AlignC-140, $Y,      90, 35)
+$SETTINGS[27][2] = BoundBox($AlignC-45,  $Y,      90, 35)
+$SETTINGS[28][2] = BoundBox($AlignC+50,  $Y,      90, 35)
+$SETTINGS[29][2] = BoundBox($AlignC-140, $Y+40,   90, 35)
+$SETTINGS[30][2] = BoundBox($AlignC-45,  $Y+40,   90, 35)
+$SETTINGS[31][2] = BoundBox($AlignC+50,  $Y+40,   90, 35)
+$SETTINGS[32][2] = BoundBox($AlignC-92,  $Y+80,   90, 35)
+$SETTINGS[33][2] = BoundBox($AlignC+2,   $Y+80,   90, 35)
+
+
+;gameplay
+$Y = $SEPARATORS[3][1]+37+5
 $SETTINGS[14][2] = BoundBox($AlignC-100, $Y,    200,35)
 $SETTINGS[15][2] = BoundBox($AlignC-100, $Y+45, 200,35)
 $SETTINGS[16][2] = BoundBox($AlignC-70,  $Y+90, 130,19)
@@ -476,7 +531,7 @@ $SETTINGS[17][2] = BoundBox($AlignC-70,  $Y+215,130,19)
 
 
 ;sound
-$Y = $SEPARATORS[3][1]+37+5
+$Y = $SEPARATORS[4][1]+37+5
 $SETTINGS[19][2] = BoundBox($AlignC-100, $Y, 200,35)
 
 ;text
@@ -511,6 +566,15 @@ $SETTINGS[17][3] = 'SHOW GHOST PIECE'
 
 $SETTINGS[19][3] = 'VOLUME'
 
+$SETTINGS[26][3] = 'COLOR 1 (I)'
+$SETTINGS[27][3] = 'COLOR 2 (J)'
+$SETTINGS[28][3] = 'COLOR 3 (S)'
+$SETTINGS[29][3] = 'COLOR 4 (O)'
+$SETTINGS[30][3] = 'COLOR 5 (Z)'
+$SETTINGS[31][3] = 'COLOR 6 (L)'
+$SETTINGS[32][3] = 'COLOR 7 (T)'
+$SETTINGS[33][3] = 'COLOR 8 (G)'
+
 
 ;current setting
 $SETTINGS[ 0][4] = vKey($KEYBINDS[ 0][0])
@@ -543,6 +607,15 @@ $SETTINGS[17][4] = $GhostPiece
 
 $SETTINGS[19][4] = $VOLUME
 
+$SETTINGS[26][4] = $ColorHotkeyLabel[0]
+$SETTINGS[27][4] = $ColorHotkeyLabel[1]
+$SETTINGS[28][4] = $ColorHotkeyLabel[2]
+$SETTINGS[29][4] = $ColorHotkeyLabel[3]
+$SETTINGS[30][4] = $ColorHotkeyLabel[4]
+$SETTINGS[31][4] = $ColorHotkeyLabel[5]
+$SETTINGS[32][4] = $ColorHotkeyLabel[6]
+$SETTINGS[33][4] = $ColorHotkeyLabel[7]
+
 ;action
 $SETTINGS[ 0][5] = 'SetKeybind(0,0)'
 $SETTINGS[ 1][5] = 'SetKeybind(1,1)'
@@ -574,6 +647,15 @@ $SETTINGS[17][5] = 'ToggleCheckbox(17, "GHOST_PIECE", $GhostPiece)'
 
 $SETTINGS[19][5] = 'SetVolume(19)'
 
+$SETTINGS[26][5] = 'SetColorHotkey(0, 26)'
+$SETTINGS[27][5] = 'SetColorHotkey(1, 27)'
+$SETTINGS[28][5] = 'SetColorHotkey(2, 28)'
+$SETTINGS[29][5] = 'SetColorHotkey(3, 29)'
+$SETTINGS[30][5] = 'SetColorHotkey(4, 30)'
+$SETTINGS[31][5] = 'SetColorHotkey(5, 31)'
+$SETTINGS[32][5] = 'SetColorHotkey(6, 32)'
+$SETTINGS[33][5] = 'SetColorHotkey(7, 33)'
+
 ;trigger, 0 = falling edge, 1 = raising edge
 $SETTINGS[ 0][6] = 1
 $SETTINGS[ 1][6] = 1
@@ -593,6 +675,14 @@ $SETTINGS[20][6] = 1
 $SETTINGS[21][6] = 1
 $SETTINGS[22][6] = 1
 $SETTINGS[23][6] = 1
+$SETTINGS[26][6] = 1
+$SETTINGS[27][6] = 1
+$SETTINGS[28][6] = 1
+$SETTINGS[29][6] = 1
+$SETTINGS[30][6] = 1
+$SETTINGS[31][6] = 1
+$SETTINGS[32][6] = 1
+$SETTINGS[33][6] = 1
 
 #EndRegion
 #Region TESTING
@@ -911,6 +1001,16 @@ Func KeyProc($nCode, $wParam, $lParam)
 					If $KEYBINDS[$i][$KEYEDGE] And $CTRL Then Execute($KEYBINDS[$i][$KEYACTION])
 				EndIf
 			Next
+
+			; カラーパレットホットキーチェック (ハイライトモード・設定画面以外で有効)
+			If Not $HighlightMode And Not $SETTINGS_ACTIVE And $CTRL Then
+				For $j = 0 To $PALETTE_HOTKEY_COUNT - 1
+					If $ColorHotkey[$j] = $vkCode Then
+						EditColorSet($j + 1)
+						ExitLoop
+					EndIf
+				Next
+			EndIf
 		EndIf
 	EndIf
 
@@ -1375,6 +1475,53 @@ Func SetKeybind($KB, $STT)
 
 	IniWrite('settings.ini','SETTINGS','KB'&$KB,$LASTKEYPRESSED)
 EndFunc
+Func SetColorHotkey($Index, $STT)
+	DrawKeyCapture($STT)
+
+	$KEYACTIVE = True
+	$LASTKEYPRESSED = 27 ;esc key
+	While $LASTKEYPRESSED = 27
+		If GUIGetMsg() = -3 Then Return
+	WEnd
+
+	Local $KeyCode = $LASTKEYPRESSED
+	Local $Valid = True
+
+	; 既存キーバインドとの競合チェック (KB0-KB9, KB12, KB13)
+	For $j = 0 To 9
+		If $KEYBINDS[$j][0] = $KeyCode Then
+			$Valid = False
+			ExitLoop
+		EndIf
+	Next
+	If $Valid And $KEYBINDS[12][0] = $KeyCode Then $Valid = False
+	If $Valid And $KEYBINDS[13][0] = $KeyCode Then $Valid = False
+
+	; 他パレットホットキーとの重複チェック
+	If $Valid Then
+		For $j = 0 To $PALETTE_HOTKEY_COUNT - 1
+			If $j <> $Index And $ColorHotkey[$j] = $KeyCode Then
+				$Valid = False
+				ExitLoop
+			EndIf
+		Next
+	EndIf
+
+	; Backspaceでクリア
+	If $KeyCode = 8 Then
+		$ColorHotkey[$Index] = 0
+		$ColorHotkeyLabel[$Index] = ''
+		$SETTINGS[$STT][4] = ''
+		IniWrite('settings.ini', 'SETTINGS', 'COLOR_HOTKEY_' & $Index, '')
+	ElseIf $Valid Then
+		$ColorHotkey[$Index] = $KeyCode
+		$ColorHotkeyLabel[$Index] = vKey($KeyCode)
+		$SETTINGS[$STT][4] = $ColorHotkeyLabel[$Index]
+		IniWrite('settings.ini', 'SETTINGS', 'COLOR_HOTKEY_' & $Index, $KeyCode)
+	EndIf
+
+	$KEYACTIVE = False
+EndFunc
 Func SetSlider($S, $Min, $Max, $Key, ByRef $Value)
 	Local $m, $b = $SETTINGS[$S][2]
 
@@ -1770,6 +1917,18 @@ Func DrawPaintButtons($DRW)
 
 	_WinAPI_SelectObject($BDC, $ICONBMP)
 	_WinAPI_BitBlt($DRW, $B[0]+1, $B[1]+1, 13, 13, $BDC, 0, 26, $SRCINVERT)
+
+	; ホットキーラベル描画
+	_WinAPI_SelectObject($DRW, $Font9)
+	_WinAPI_SetTextColor($DRW, $Color[$CTXT])
+	For $i = 0 To 7
+		If $ColorHotkeyLabel[$i] <> '' Then
+			$B = $PAINT[$i][2]
+			; ボタンの上に被せるようにラベルを表示
+			Local $Label = StringLeft($ColorHotkeyLabel[$i], 2)
+			_WinAPI_DrawText($DRW, $Label, Rect($B[0], $B[1], $B[2], $B[3]), $DT_CENTER)
+		EndIf
+	Next
 EndFunc
 Func DrawHighlightButtons()
 	_WinAPI_FillRect($DRW, Rect($AlignR, $AlignT + 295, 75, 35), $Brush[$CBOX])
@@ -1870,6 +2029,11 @@ Func DrawSettings($DRW, $Render = True)
 		DrawButton($DRW, $i)
 	Next
 	DrawButton($DRW, 18)
+
+	; パレットホットキーボタン描画
+	For $i = 26 To 33
+		DrawButton($DRW, $i)
+	Next
 
 	If $Render Then _WinAPI_BitBlt($GDI, 0, 0, $WSize[0], $SETTINGS_PANELSIZE, $DRW, 0, 0, $SRCCOPY)
 EndFunc
