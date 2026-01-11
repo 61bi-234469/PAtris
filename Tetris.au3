@@ -38,6 +38,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
 #include <Clipboard.au3>
 #include <Array.au3>
 #include <Color.au3>
+#include <GUIConstantsEx.au3>
 
 
 #include 'lib\Keyboard.au3'
@@ -161,6 +162,7 @@ Global $InfiniteSwaps	= IniRead('settings.ini', 'SETTINGS', 'INFINITE_HOLD', Fal
 Global $RenderTextures	= IniRead('settings.ini', 'SETTINGS', 'RENDER_TEXTURES', False)	= 'True' ? True : False
 Global $DasCancel		= IniRead('settings.ini', 'SETTINGS', 'DAS_CANCELLATION', True)	= 'True' ? True : False
 Global $MirrorQueue		= IniRead('settings.ini', 'SETTINGS', 'MIRROR_QUEUE', True)		= 'True' ? True : False
+Global $HoldNextUsePalette = IniRead('settings.ini', 'SETTINGS', 'HOLDNEXT_USE_PALETTE', False) = 'True' ? True : False
 
 ;drag file holder
 Global $DROPFILE[2] = [False,'']
@@ -273,7 +275,7 @@ SoundSetWaveVolume($VOLUME)
 #Region KEYBINDS
 ;key-code, action to perform, key pressed?, time of the last press/release, raising edge?
 Global Enum $KEYCODE, $KEYACTION, $KEYSTATE, $KEYTIME, $KEYEDGE
-Global		$KEYBINDS[21][5]
+Global		$KEYBINDS[25][5]
 Global		$HOTKEYS [ 6][2]
 
 ;color palette hotkeys
@@ -305,6 +307,10 @@ $KEYBINDS[17][4] = 1
 $KEYBINDS[18][4] = 1
 $KEYBINDS[19][4] = 1
 $KEYBINDS[20][4] = 1
+$KEYBINDS[21][4] = 1
+$KEYBINDS[22][4] = 1
+$KEYBINDS[23][4] = 1
+$KEYBINDS[24][4] = 1
 
 ;functions
 $KEYBINDS[0 ][1] = 'MoveL()'
@@ -330,6 +336,10 @@ $KEYBINDS[17][1] = 'PCSetLeftover(4)'
 $KEYBINDS[18][1] = 'PCSetLeftover(5)'
 $KEYBINDS[19][1] = 'PCSetLeftover(6)'
 $KEYBINDS[20][1] = 'PCSetLeftover(7)'
+$KEYBINDS[21][1] = 'HoldNextSet()'
+$KEYBINDS[22][1] = 'Fumen()'
+$KEYBINDS[23][1] = 'GridMirror()'
+$KEYBINDS[24][1] = 'SnapBoard()'
 
 $HOTKEYS [0 ][1] = 'Undo'
 $HOTKEYS [1 ][1] = 'Redo'
@@ -362,6 +372,10 @@ $KEYBINDS[17][0] = 52 ;4
 $KEYBINDS[18][0] = 53 ;5
 $KEYBINDS[19][0] = 54 ;6
 $KEYBINDS[20][0] = 55 ;7
+$KEYBINDS[21][0] = Number(IniRead('settings.ini', 'SETTINGS', 'KB21', 78)) ;N
+$KEYBINDS[22][0] = Number(IniRead('settings.ini', 'SETTINGS', 'KB22', 85)) ;U
+$KEYBINDS[23][0] = Number(IniRead('settings.ini', 'SETTINGS', 'KB23', 77)) ;M
+$KEYBINDS[24][0] = Number(IniRead('settings.ini', 'SETTINGS', 'KB24', 80)) ;P
 
 ; カラーパレットホットキー読み込み (競合検証付き)
 For $__i = 0 To $PALETTE_HOTKEY_COUNT - 1
@@ -381,6 +395,10 @@ For $__i = 0 To $PALETTE_HOTKEY_COUNT - 1
 		Next
 		If $__Valid And $KEYBINDS[12][0] = $__KeyCode Then $__Valid = False
 		If $__Valid And $KEYBINDS[13][0] = $__KeyCode Then $__Valid = False
+		If $__Valid And $KEYBINDS[21][0] = $__KeyCode Then $__Valid = False
+		If $__Valid And $KEYBINDS[22][0] = $__KeyCode Then $__Valid = False
+		If $__Valid And $KEYBINDS[23][0] = $__KeyCode Then $__Valid = False
+		If $__Valid And $KEYBINDS[24][0] = $__KeyCode Then $__Valid = False
 
 		; パレット内重複チェック (先勝ち)
 		If $__Valid Then
@@ -410,6 +428,7 @@ $HOTKEYS [4 ][0] = '^v'
 $HOTKEYS [5 ][0] = '^q'
 
 Global $KEYACTIVE = False
+Global $DEFERRED_ACTION = ''
 
 Global $KEYPROC = DllCallbackRegister('KeyProc', 'long', 'int;wparam;lparam')
 Global $MODULE  = _WinAPI_GetModuleHandle(0)
@@ -419,7 +438,7 @@ Global $LASTKEYPRESSED = 0
 #EndRegion
 #Region BUTTONS
 ;standard buttons
-Global Enum $MODEBUTTON, $SETTBUTTON, $FUMEN, $TESTBUTTON, _
+Global Enum $MODEBUTTON, $SETTBUTTON, $HOLDNEXT, $FUMEN, $TESTBUTTON, _
 			$HOLDBUTTON, $HOLDDELETE, $HOLDCHECK, _
 			$NEXTBUTTON, $SHUFBUTTON, _
 			$UNDOBUTTON, $REDOBUTTON, _
@@ -428,9 +447,9 @@ Global Enum $MODEBUTTON, $SETTBUTTON, $FUMEN, $TESTBUTTON, _
 			$ACOLCHECK, _
 			$MIRRBUTTON
 
-Global $BUTTONS[16][3]
-Global $BUTTONTEXT[4] = ['TRAINING  MODE  ', '        SETTINGS', '  FUMEN  Export', '          TEST  ']
-If Not $DEBUG Then ReDim $BUTTONTEXT[3]
+Global $BUTTONS[17][3]
+Global $BUTTONTEXT[5] = ['TRAINING  MODE  ', '        SETTINGS', 'HOLD/NEXT ', '  FUMEN  Export', '          TEST  ']
+If Not $DEBUG Then ReDim $BUTTONTEXT[4]
 
 $BUTTONS[$TESTBUTTON][2] = BoundBox($AlignL, $AlignB - 120, 75, 35)
 $BUTTONS[$MODEBUTTON][2] = BoundBox($AlignL, $AlignB -  80, 75, 35)
@@ -446,7 +465,8 @@ $BUTTONS[$UNDOBUTTON][2] = BoundBox($AlignR,      $AlignT + 250,  35,  35)
 $BUTTONS[$REDOBUTTON][2] = BoundBox($AlignR + 40, $AlignT + 250,  35,  35)
 $BUTTONS[$SNAPBUTTON][2] = BoundBox($AlignR,      $AlignB -  45,  75,  40)
 $BUTTONS[$MIRRBUTTON][2] = BoundBox($AlignR,      $AlignB -  90,  75,  40)
-$BUTTONS[$FUMEN][2] = BoundBox($AlignR,    $AlignB -  131,  75,  35)
+$BUTTONS[$HOLDNEXT][2] = BoundBox($AlignR,  $AlignB -  172,  75,  35)
+$BUTTONS[$FUMEN][2] = BoundBox($AlignR,     $AlignB -  131,  75,  35)
 
 $BUTTONS[$HILIBUTTON][2] = BoundBox($AlignR, $AlignT + 295, 75, 35)
 $BUTTONS[$HCLRBUTTON][2] = BoundBox($AlignR, $AlignT + 335, 75, 35)
@@ -469,10 +489,10 @@ $PAINT[8][2] = BoundBox($AlignR + 50, $AlignT + 370, 15, 15)
 
 #EndRegion BUTTONS
 #Region SETTINGS TAB
-Global $SEPARATORS[5][2] = [['COLORS', 5], ['KEYBINDS', 195], ['PALETTE', 455], ['GAMEPLAY', 590], ['SOUND', 870]]
-Global $SETTINGS[34][7]
+Global $SEPARATORS[5][2] = [['COLORS', 5], ['KEYBINDS', 195], ['PALETTE', 610], ['GAMEPLAY', 800], ['SOUND', 1090]]
+Global $SETTINGS[38][7]
 Global $SETTINGS_ACTIVE = False
-Global $SETTINGS_PANELSIZE = 1000
+Global $SETTINGS_PANELSIZE = 1200
 Local  $Y
 
 ;colors
@@ -505,6 +525,10 @@ $SETTINGS[8 ][2] = BoundBox($AlignC-45, $Y+170, 90,35)
 
 $SETTINGS[9 ][2] = BoundBox($AlignC-92, $Y+215, 90,35)
 $SETTINGS[23][2] = BoundBox($AlignC+2,  $Y+215, 90,35)
+$SETTINGS[34][2] = BoundBox($AlignC-92, $Y+260, 90,35)
+$SETTINGS[35][2] = BoundBox($AlignC+2,  $Y+260, 90,35)
+$SETTINGS[36][2] = BoundBox($AlignC-92, $Y+305, 90,35)
+$SETTINGS[37][2] = BoundBox($AlignC+2,  $Y+305, 90,35)
 
 
 ;palette hotkeys
@@ -547,6 +571,10 @@ $SETTINGS[ 7][3] = 'HARD DROP'
 $SETTINGS[ 8][3] = 'RESET GAME'
 $SETTINGS[ 9][3] = 'HLIGHT MODE'
 $SETTINGS[23][3] = 'HLIGHT CLEAR'
+$SETTINGS[34][3] = 'HOLD/NEXT'
+$SETTINGS[35][3] = 'FUMEN EXPORT'
+$SETTINGS[36][3] = 'MIRROR'
+$SETTINGS[37][3] = 'FIELD CAP'
 
 $SETTINGS[10][3] = '<'
 $SETTINGS[11][3] = 'SKIN'
@@ -588,6 +616,10 @@ $SETTINGS[ 7][4] = vKey($KEYBINDS[ 3][0])
 $SETTINGS[ 8][4] = vKey($KEYBINDS[ 8][0])
 $SETTINGS[ 9][4] = vKey($KEYBINDS[13][0])
 $SETTINGS[23][4] = vKey($KEYBINDS[12][0])
+$SETTINGS[34][4] = vKey($KEYBINDS[21][0])
+$SETTINGS[35][4] = vKey($KEYBINDS[22][0])
+$SETTINGS[36][4] = vKey($KEYBINDS[23][0])
+$SETTINGS[37][4] = vKey($KEYBINDS[24][0])
 
 $SETTINGS[10][4] = ''
 $SETTINGS[11][4] = $CSKIN
@@ -628,6 +660,10 @@ $SETTINGS[ 7][5] = 'SetKeybind(3,7)'
 $SETTINGS[ 8][5] = 'SetKeybind(8,8)'
 $SETTINGS[ 9][5] = 'SetKeybind(13,9)'
 $SETTINGS[23][5] = 'SetKeybind(12,23)'
+$SETTINGS[34][5] = 'SetKeybind(21,34)'
+$SETTINGS[35][5] = 'SetKeybind(22,35)'
+$SETTINGS[36][5] = 'SetKeybind(23,36)'
+$SETTINGS[37][5] = 'SetKeybind(24,37)'
 
 $SETTINGS[10][5] = 'SetSkin(-1, 11)'
 $SETTINGS[11][5] = ''
@@ -675,6 +711,10 @@ $SETTINGS[20][6] = 1
 $SETTINGS[21][6] = 1
 $SETTINGS[22][6] = 1
 $SETTINGS[23][6] = 1
+$SETTINGS[34][6] = 1
+$SETTINGS[35][6] = 1
+$SETTINGS[36][6] = 1
+$SETTINGS[37][6] = 1
 $SETTINGS[26][6] = 1
 $SETTINGS[27][6] = 1
 $SETTINGS[28][6] = 1
@@ -874,6 +914,7 @@ While 1
 WEnd
 Func Main()
 	SetHotkeys()
+	RunDeferredAction()
 
 	Local $msg
 	Do
@@ -907,6 +948,7 @@ Func Main()
 			If $BUTTONS[$SETTBUTTON][0] Then Return Settings()
 			If $BUTTONS[$SHUFBUTTON][0] Then Return BagShuffle()
 			If $BUTTONS[$NEXTBUTTON][0] Then Return BagSet()
+			If $BUTTONS[$HOLDNEXT][0] Then Return HoldNextSet()
 			If $BUTTONS[$HOLDCHECK ][0] Then Return HoldModeToggle()
 			If $BUTTONS[$HOLDDELETE][0] Then Return HoldReset()
 			If $BUTTONS[$HOLDBUTTON][0] Then Return HoldSet()
@@ -942,6 +984,12 @@ Func Main()
 
 	Until $msg = 0
 EndFunc   ;==>Main
+Func RunDeferredAction()
+	If $DEFERRED_ACTION = '' Then Return
+	Local $Action = $DEFERRED_ACTION
+	$DEFERRED_ACTION = ''
+	Execute($Action)
+EndFunc
 Func GUIGetMousePosition($GUI)
 	Local $Return = [-1,-1,0,0,0]
 	Local $Pos = GUIGetCursorInfo($GUI)
@@ -970,6 +1018,14 @@ Func SetHotkeys($Flag = 0)
 	EndIf
 EndFunc   ;==>SetHotkeys
 
+Func ShouldDeferKeybind($Index)
+	Switch $Index
+		Case 21, 22, 23, 24
+			Return True
+	EndSwitch
+	Return False
+EndFunc
+
 Func KeyProc($nCode, $wParam, $lParam)
 	If $nCode >= 0 And $KEYACTIVE Then
 		Local $tKEYHOOKS = DllStructCreate($tagKBDLLHOOKSTRUCT, $lParam)
@@ -989,7 +1045,13 @@ Func KeyProc($nCode, $wParam, $lParam)
 				If Not $KEYBINDS[$i][$KEYSTATE] And $KEYBINDS[$i][$KEYCODE] = $vkCode Then
 					$KEYBINDS[$i][$KEYSTATE] = True
 					$KEYBINDS[$i][$KEYTIME ] = $msgTime
-					If Not $KEYBINDS[$i][$KEYEDGE] Then Execute($KEYBINDS[$i][$KEYACTION])
+					If Not $KEYBINDS[$i][$KEYEDGE] Then
+						If ShouldDeferKeybind($i) Then
+							$DEFERRED_ACTION = $KEYBINDS[$i][$KEYACTION]
+						Else
+							Execute($KEYBINDS[$i][$KEYACTION])
+						EndIf
+					EndIf
 				EndIf
 			Next
 
@@ -998,7 +1060,13 @@ Func KeyProc($nCode, $wParam, $lParam)
 				If $KEYBINDS[$i][$KEYSTATE] And $KEYBINDS[$i][$KEYCODE] = $vkCode Then
 					$KEYBINDS[$i][$KEYSTATE] = False
 					$KEYBINDS[$i][$KEYTIME ] = $msgTime
-					If $KEYBINDS[$i][$KEYEDGE] And $CTRL Then Execute($KEYBINDS[$i][$KEYACTION])
+					If $KEYBINDS[$i][$KEYEDGE] And $CTRL Then
+						If ShouldDeferKeybind($i) Then
+							$DEFERRED_ACTION = $KEYBINDS[$i][$KEYACTION]
+						Else
+							Execute($KEYBINDS[$i][$KEYACTION])
+						EndIf
+					EndIf
 				EndIf
 			Next
 
@@ -1496,6 +1564,10 @@ Func SetColorHotkey($Index, $STT)
 	Next
 	If $Valid And $KEYBINDS[12][0] = $KeyCode Then $Valid = False
 	If $Valid And $KEYBINDS[13][0] = $KeyCode Then $Valid = False
+	If $Valid And $KEYBINDS[21][0] = $KeyCode Then $Valid = False
+	If $Valid And $KEYBINDS[22][0] = $KeyCode Then $Valid = False
+	If $Valid And $KEYBINDS[23][0] = $KeyCode Then $Valid = False
+	If $Valid And $KEYBINDS[24][0] = $KeyCode Then $Valid = False
 
 	; 他パレットホットキーとの重複チェック
 	If $Valid Then
@@ -2013,6 +2085,9 @@ Func DrawSettings($DRW, $Render = True)
 	EndIf
 
 	For $i = 0 To 12
+		DrawButton($DRW, $i)
+	Next
+	For $i = 34 To 37
 		DrawButton($DRW, $i)
 	Next
 
@@ -3133,6 +3208,118 @@ Func HoldSet()
 
 	$Swapped = False
 	$CHG = True
+EndFunc
+Func HoldNextSet()
+	SetHotkeys(1)
+	$KEYACTIVE = False
+
+	Local $HoldText = PieceGetName($PieceH)
+	Local $QueueText = ''
+	For $i = 0 To UBound($Bag) - 1
+		$QueueText &= PieceGetName($Bag[$i])
+	Next
+
+	Local $Default = $HoldText & '/' & $QueueText
+
+	Local $W = WinGetPos($GUI)
+	Local $PopupW = 250
+	Local $PopupH = 130
+	Local $Popup = GUICreate($WTITLE, $PopupW, $PopupH, $W[0]+$W[2]/2-$PopupW/2, $W[1]+$W[3]/2-$PopupH/2, BitOR($WS_CAPTION, $WS_SYSMENU), -1, $GUI)
+
+	GUICtrlCreateLabel('Set the HOLD/QUEUE (TLJZSOI)', 15, 10, 220, 16)
+	Local $Input = GUICtrlCreateInput($Default, 15, 28, 220, 20)
+	Local $Check = GUICtrlCreateCheckbox('Use palette letters', 15, 55, 220, 18)
+	If $HoldNextUsePalette Then GUICtrlSetState($Check, $GUI_CHECKED)
+	Local $Ok = GUICtrlCreateButton('OK', 55, 80, 60, 22)
+	Local $Cancel = GUICtrlCreateButton('Cancel', 135, 80, 60, 22)
+	GUICtrlSetState($Ok, $GUI_DEFBUTTON)
+	GUICtrlSetState($Input, $GUI_FOCUS)
+
+	GUISetState(@SW_SHOW, $Popup)
+
+	While 1
+		Switch GUIGetMsg()
+			Case -3, $Cancel
+				ExitLoop
+			Case $Ok
+				$HoldNextUsePalette = (BitAND(GUICtrlRead($Check), $GUI_CHECKED) <> 0)
+				IniWrite('settings.ini', 'SETTINGS', 'HOLDNEXT_USE_PALETTE', $HoldNextUsePalette)
+				HoldNextApply(GUICtrlRead($Input), $HoldNextUsePalette)
+				ExitLoop
+		EndSwitch
+		Sleep(10)
+	WEnd
+
+	GUIDelete($Popup)
+EndFunc
+Func HoldNextApply($Input, $UsePalette)
+	Local $Text = StringStripWS($Input, 8)
+	If $Text = '' Then Return
+
+	Local $Sep = StringInStr($Text, '/')
+	Local $HoldPart = ''
+	Local $QueuePart = ''
+
+	If $Sep > 0 Then
+		$HoldPart = StringLeft($Text, $Sep - 1)
+		$QueuePart = StringTrimLeft($Text, $Sep)
+	Else
+		$QueuePart = $Text
+	EndIf
+
+	If $Sep > 0 And $HoldPart <> '' Then
+		Local $HoldChar = StringLeft($HoldPart, 1)
+		If $HoldChar = '-' Then
+			$PieceH = -1
+		Else
+			$PieceH = HoldNextCharToPiece($HoldChar, $UsePalette)
+		EndIf
+
+		$Swapped = False
+		$CHG = True
+	EndIf
+
+	If $QueuePart <> '' Then
+		If $QueuePart = '-' Then
+			Local $Empty[0]
+			$Bag = $Empty
+		Else
+			$Bag = HoldNextQueueFromString($QueuePart, $UsePalette)
+		EndIf
+
+		$CHG = True
+		PieceReset()
+	EndIf
+EndFunc
+Func HoldNextQueueFromString($QueuePart, $UsePalette)
+	Local $Queue = StringSplit($QueuePart, '', 2)
+
+	For $i = 0 To UBound($Queue) - 1
+		If $Queue[$i] = '-' Then
+			$Queue[$i] = 7
+		Else
+			$Queue[$i] = HoldNextCharToPiece($Queue[$i], $UsePalette)
+		EndIf
+	Next
+
+	Return $Queue
+EndFunc
+Func HoldNextCharToPiece($Char, $UsePalette)
+	Local $Upper = StringUpper($Char)
+	If $UsePalette Then
+		Local $PaletteId = HoldNextPaletteCharToPiece($Upper)
+		If $PaletteId >= 0 Then Return $PaletteId
+	EndIf
+
+	Return PieceGetID($Upper)
+EndFunc
+Func HoldNextPaletteCharToPiece($Char)
+	For $i = 0 To 7
+		Local $Label = $ColorHotkeyLabel[$i]
+		If StringLen($Label) = 1 And StringUpper($Label) = $Char Then Return $i
+	Next
+
+	Return -1
 EndFunc
 Func HoldReset()
 	$Swapped = False
