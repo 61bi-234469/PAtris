@@ -1914,7 +1914,10 @@ Func DrawButtons($DRW)
 
 		$X = Int(StringLen($BUTTONTEXT[$i])/2)
 
-		If Mod($X, 2) Then
+		If $i = $HOLDNEXT Then
+			_WinAPI_DrawText($DRW, StringLeft    ($BUTTONTEXT[$i],$X), Rect($B[0]+5, $B[1]+5, 65, 11),  $DT_CENTER)
+			_WinAPI_DrawText($DRW, StringTrimLeft($BUTTONTEXT[$i],$X), Rect($B[0]+5, $B[1]+16, 65, 11), $DT_CENTER)
+		ElseIf Mod($X, 2) Then
 			_WinAPI_DrawText($DRW, StringLeft    ($BUTTONTEXT[$i],$X), Rect($B[0]+6, $B[1]+5, 65, 11),  $DT_LEFT)
 			_WinAPI_DrawText($DRW, StringTrimLeft($BUTTONTEXT[$i],$X), Rect($B[0]+6, $B[1]+16, 65, 11), $DT_LEFT)
 		Else
@@ -2722,7 +2725,7 @@ EndFunc
 
 Func Fumen()
 	Local $FumenEncode = ""
-	Local $FumenUrl = "https://fumen.sixwi.de/?v115@" 
+	Local $FumenUrl = "https://61bi-234469.github.io/fumen-for-mobile-ts/#?d=v115@"
 	;~ space, I, J, S, O, Z, L, T, garbage
 	Local $ColorToFumenColor = [0, 1, 6, 7, 3, 4, 2, 5, 8]
 
