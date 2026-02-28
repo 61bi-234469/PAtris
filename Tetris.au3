@@ -438,7 +438,7 @@ Global $LASTKEYPRESSED = 0
 #EndRegion
 #Region BUTTONS
 ;standard buttons
-Global Enum $MODEBUTTON, $SETTBUTTON, $HOLDNEXT, $FUMEN, $TESTBUTTON, _
+Global Enum $MODEBUTTON, $SETTBUTTON, $HOLDNEXT, $FUMENIMPORT, $FUMEN, $TESTBUTTON, _
 			$HOLDBUTTON, $HOLDDELETE, $HOLDCHECK, _
 			$NEXTBUTTON, $SHUFBUTTON, _
 			$UNDOBUTTON, $REDOBUTTON, _
@@ -447,9 +447,9 @@ Global Enum $MODEBUTTON, $SETTBUTTON, $HOLDNEXT, $FUMEN, $TESTBUTTON, _
 			$ACOLCHECK, _
 			$MIRRBUTTON
 
-Global $BUTTONS[17][3]
-Global $BUTTONTEXT[5] = ['TRAINING  MODE  ', '        SETTINGS', 'HOLD/NEXT ', '  FUMEN  Export', '          TEST  ']
-If Not $DEBUG Then ReDim $BUTTONTEXT[4]
+Global $BUTTONS[18][3]
+Global $BUTTONTEXT[6] = ['TRAINING  MODE  ', '        SETTINGS', 'HOLD/NEXT ', ' FUMEN Import', '  FUMEN  Export', '          TEST  ']
+If Not $DEBUG Then ReDim $BUTTONTEXT[5]
 
 $BUTTONS[$TESTBUTTON][2] = BoundBox($AlignL, $AlignB - 120, 75, 35)
 $BUTTONS[$MODEBUTTON][2] = BoundBox($AlignL, $AlignB -  80, 75, 35)
@@ -465,8 +465,9 @@ $BUTTONS[$UNDOBUTTON][2] = BoundBox($AlignR,      $AlignT + 250,  35,  35)
 $BUTTONS[$REDOBUTTON][2] = BoundBox($AlignR + 40, $AlignT + 250,  35,  35)
 $BUTTONS[$SNAPBUTTON][2] = BoundBox($AlignR,      $AlignB -  45,  75,  40)
 $BUTTONS[$MIRRBUTTON][2] = BoundBox($AlignR,      $AlignB -  90,  75,  40)
-$BUTTONS[$HOLDNEXT][2] = BoundBox($AlignR,  $AlignB -  172,  75,  35)
-$BUTTONS[$FUMEN][2] = BoundBox($AlignR,     $AlignB -  131,  75,  35)
+$BUTTONS[$HOLDNEXT][2] = BoundBox($AlignR,        $AlignB -  213,  75,  35)
+$BUTTONS[$FUMENIMPORT][2] = BoundBox($AlignR,     $AlignB -  172,  75,  35)
+$BUTTONS[$FUMEN][2] = BoundBox($AlignR,           $AlignB -  131,  75,  35)
 
 $BUTTONS[$HILIBUTTON][2] = BoundBox($AlignR, $AlignT + 295, 75, 35)
 $BUTTONS[$HCLRBUTTON][2] = BoundBox($AlignR, $AlignT + 335, 75, 35)
@@ -953,6 +954,7 @@ Func Main()
 			If $BUTTONS[$HOLDDELETE][0] Then Return HoldReset()
 			If $BUTTONS[$HOLDBUTTON][0] Then Return HoldSet()
 			If $BUTTONS[$SNAPBUTTON][0] Then Return SnapBoard()
+			If $BUTTONS[$FUMENIMPORT][0] Then Return FumenImport()
 			If $BUTTONS[$FUMEN][0] Then Return Fumen()
 			If $BUTTONS[$MIRRBUTTON][0] Then Return GridMirror()
 			If $BUTTONS[$UNDOBUTTON][0] Then Return Undo()
@@ -2752,6 +2754,27 @@ Func Fumen()
 
 	ShellExecute("https://61bi-234469.github.io/fumen-for-mobile-ts/#?d=" & $FumenEncode)
 EndFunc
+Func FumenImport()
+	If UBound($GRID, 1) <> 10 Or UBound($GRID, 2) <> 24 Then
+		DrawComment(0, 1800, 'FUMEN ERROR', 'Fumen requires 10x24 field.')
+		Return
+	EndIf
+
+	SetHotkeys(1)
+	$KEYACTIVE = False
+
+	Local $W = WinGetPos($GUI)
+	Local $Text = ClipGet()
+	$Text = InputBox($WTITLE, 'Paste fumen token or URL', $Text, '', 360, 140, $W[0]+$W[2]/2-180, $W[1]+$W[3]/2-70, 0, $GUI)
+	If @error Then Return
+
+	If ExtractFumenToken($Text) = '' Then
+		DrawComment(0, 1600, 'FUMEN IMPORT', 'No valid fumen found.')
+		Return
+	EndIf
+
+	TryImportFumenFromText($Text)
+EndFunc
 
 Func FumenLegacy()
 	Local $FumenEncode = ""
@@ -2889,7 +2912,13 @@ Func FumenBridgeEncode()
 
 	Local $Resp = ParseBridgeResponse($StdOut)
 	If Not $RunOK Or __BridgeResponseGet($Resp, 'OK', '0') <> '1' Then
-		DrawComment(0, 1400, 'FUMEN EXPORT', 'Bridge failed. Using legacy export.')
+		Local $BridgeMsg = StringLower(__BridgeResponseGet($Resp, 'MSG', ''))
+		Local $ErrText = StringLower($StdErr & ' ' & $BridgeMsg)
+		If StringInStr($ErrText, 'cannot find module') > 0 And StringInStr($ErrText, 'tetris-fumen') > 0 Then
+			DrawComment(0, 2000, 'FUMEN EXPORT', 'Run npm ci in tools/fumen-bridge')
+		Else
+			DrawComment(0, 1400, 'FUMEN EXPORT', 'Bridge failed. Using legacy export.')
+		EndIf
 		Return ''
 	EndIf
 
@@ -2922,12 +2951,21 @@ Func FumenBridgeDecode($Text)
 
 	Local $Resp = ParseBridgeResponse($StdOut)
 	If Not $RunOK Or __BridgeResponseGet($Resp, 'OK', '0') <> '1' Then
-		If $ExitCode = 9009 Or StringInStr(StringLower($StdErr), 'not recognized') > 0 Then
+		Local $BridgeMsg = StringLower(__BridgeResponseGet($Resp, 'MSG', ''))
+		Local $ErrText = StringLower($StdErr & ' ' & $BridgeMsg)
+		Local $StdErrOneLine = StringStripWS(StringReplace(StringReplace($StdErr, @CR, ' '), @LF, ' '), 7)
+		If StringInStr($ErrText, 'cannot find module') > 0 And StringInStr($ErrText, 'tetris-fumen') > 0 Then
+			DrawComment(0, 2000, 'FUMEN IMPORT', 'Run npm ci in tools/fumen-bridge')
+		ElseIf $ExitCode = 9009 Or StringInStr($ErrText, 'not recognized') > 0 Then
 			DrawComment(0, 1600, 'FUMEN IMPORT', 'Node bridge unavailable.')
 		ElseIf Not FileExists(@ScriptDir & '\tools\fumen-bridge\bridge.js') Then
 			DrawComment(0, 1600, 'FUMEN IMPORT', 'Bridge script not found.')
+		ElseIf $BridgeMsg <> '' Then
+			DrawComment(0, 1800, 'FUMEN IMPORT', StringLeft($BridgeMsg, 42))
+		ElseIf $StdErrOneLine <> '' Then
+			DrawComment(0, 1800, 'FUMEN IMPORT', StringLeft($StdErrOneLine, 42))
 		Else
-			DrawComment(0, 1600, 'FUMEN IMPORT', 'Failed to decode fumen.')
+			DrawComment(0, 1600, 'FUMEN IMPORT', 'Bridge exit code: ' & $ExitCode)
 		EndIf
 		Return
 	EndIf
@@ -2941,10 +2979,11 @@ Func FumenBridgeDecode($Text)
 	Local $HasQuiz = (__BridgeResponseGet($Resp, 'HAS_QUIZ', '0') = '1')
 	Local $Hold = StringUpper(StringLeft(__BridgeResponseGet($Resp, 'HOLD', '-'), 1))
 	Local $Queue = StringUpper(__BridgeResponseGet($Resp, 'QUEUE', ''))
+	Local $HoldProvided = (__BridgeResponseGet($Resp, 'HOLD_PROVIDED', '0') = '1')
 	Local $Pages = Number(__BridgeResponseGet($Resp, 'PAGES', '1'))
 	Local $UsedPage = __BridgeResponseGet($Resp, 'USED_PAGE', 'last')
 
-	Local $Data[6] = [$BoardData, $HasQuiz, $Hold, $Queue, $Pages, $UsedPage]
+	Local $Data[7] = [$BoardData, $HasQuiz, $Hold, $Queue, $HoldProvided, $Pages, $UsedPage]
 	Return $Data
 EndFunc
 
@@ -2972,11 +3011,13 @@ Func TryImportFumenFromText($Text)
 	Next
 
 	If $Decoded[1] Then
-		Local $HoldID = PieceGetID($Decoded[2])
-		If $HoldID >= 0 And $HoldID <= 6 Then
-			$PieceH = $HoldID
-		Else
-			$PieceH = -1
+		If $Decoded[4] Then
+			Local $HoldID = PieceGetID($Decoded[2])
+			If $HoldID >= 0 And $HoldID <= 6 Then
+				$PieceH = $HoldID
+			Else
+				$PieceH = -1
+			EndIf
 		EndIf
 
 		Local $QueueText = $Decoded[3]
@@ -3019,7 +3060,8 @@ Func RunFumenBridge($Mode, $InputPath, ByRef $StdOut, ByRef $StdErr, ByRef $Exit
 	Local $StdOutPath = @TempDir & '\fourtris_fumen_stdout_' & $Tag & '.txt'
 	Local $StdErrPath = @TempDir & '\fourtris_fumen_stderr_' & $Tag & '.txt'
 
-	Local $Cmd = @ComSpec & ' /d /c ""node "' & $BridgePath & '" ' & $Mode & ' --input "' & $InputPath & '" 1>"' & $StdOutPath & '" 2>"' & $StdErrPath & '""'
+	Local $Inner = 'node "' & $BridgePath & '" ' & $Mode & ' --input "' & $InputPath & '" 1>"' & $StdOutPath & '" 2>"' & $StdErrPath & '"'
+	Local $Cmd = @ComSpec & ' /d /c "' & $Inner & '"'
 	$ExitCode = RunWait($Cmd, @ScriptDir, @SW_HIDE)
 
 	If FileExists($StdOutPath) Then

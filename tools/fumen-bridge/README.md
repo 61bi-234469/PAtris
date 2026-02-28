@@ -39,11 +39,21 @@ Output is line-based:
 
 - success:
   - `OK=1`
-  - plus result keys (`FUMEN`, `BOARD`, `HAS_QUIZ`, `HOLD`, `QUEUE`, `PAGES`, `USED_PAGE`)
+  - plus result keys (`FUMEN`, `BOARD`, `HAS_QUIZ`, `HOLD`, `QUEUE`, `HOLD_PROVIDED`, `PAGES`, `USED_PAGE`)
 - failure:
   - `OK=0`
   - `ERR=...`
   - `MSG=...`
+
+## Comment queue format (decode)
+
+- `HOLD:NEXT`:
+  - left side (`HOLD`) is a single hold mino (`IOTLJSZ`)
+  - right side (`NEXT`) is next queue (`IOTLJSZ...`)
+- `NEXT` only:
+  - no `:`
+  - treated as next queue only (hold is not provided)
+- If any character other than `IOTLJSZ` is included in queue text, queue info is rejected.
 
 ## Known constraints
 

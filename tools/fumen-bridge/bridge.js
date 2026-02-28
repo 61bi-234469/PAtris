@@ -131,19 +131,47 @@ function fieldToBoardDigits(field) {
     return result;
 }
 
-function parseQuiz(comment) {
-    const match = String(comment ?? '').match(/#Q=\[([TIOLJSZ]?)\]\(([TIOLJSZ]?)\)([TIOLJSZ]*)/i);
-    if (!match) {
-        return { hasQuiz: false, hold: '-', queue: '' };
+function parseCommentQueue(comment) {
+    const normalized = String(comment ?? '')
+        .toUpperCase()
+        .replace(/\s+/g, '');
+
+    if (normalized.length === 0) {
+        return { hasQueue: false, hold: '-', queue: '', holdProvided: false };
     }
 
-    const hold = (match[1] || '-').toUpperCase();
-    const current = (match[2] || '').toUpperCase();
-    const next = (match[3] || '').toUpperCase();
+    const separator = normalized.indexOf(':');
+    if (separator >= 0) {
+        const left = normalized.slice(0, separator);
+        const right = normalized.slice(separator + 1);
+
+        if (left.length > 1) {
+            return { hasQueue: false, hold: '-', queue: '', holdProvided: false };
+        }
+        if (left.length === 1 && !/^[TIOLJSZ]$/.test(left)) {
+            return { hasQueue: false, hold: '-', queue: '', holdProvided: false };
+        }
+        if (/[^TIOLJSZ]/.test(right)) {
+            return { hasQueue: false, hold: '-', queue: '', holdProvided: false };
+        }
+
+        return {
+            hasQueue: true,
+            hold: left.length === 1 ? left : '-',
+            queue: right,
+            holdProvided: left.length === 1,
+        };
+    }
+
+    if (/[^TIOLJSZ]/.test(normalized)) {
+        return { hasQueue: false, hold: '-', queue: '', holdProvided: false };
+    }
+
     return {
-        hasQuiz: true,
-        hold: hold || '-',
-        queue: current + next,
+        hasQueue: true,
+        hold: '-',
+        queue: normalized,
+        holdProvided: false,
     };
 }
 
@@ -151,18 +179,14 @@ function runEncode(values) {
     const board = String(values.BOARD ?? '');
     const hold = normalizeHold(values.HOLD ?? '-');
     const queue = normalizeQueue(values.QUEUE ?? '');
-    const holdForQuiz = hold === '-' ? '' : hold;
-    const current = queue.length > 0 ? queue[0] : '';
-    const next = queue.length > 1 ? queue.slice(1) : '';
 
     const field = Field.create(boardDigitsToField(board), '__________');
-    const comment = `#Q=[${holdForQuiz}](${current})${next}`;
+    const comment = hold === '-' ? queue : `${hold}:${queue}`;
     const token = encoder.encode([
         {
             field,
             comment,
             flags: {
-                quiz: true,
                 lock: true,
                 colorize: true,
             },
@@ -180,14 +204,15 @@ function runDecode(values) {
     }
 
     const page = pages[pages.length - 1];
-    const quiz = parseQuiz(page.comment);
+    const queueInfo = parseCommentQueue(page.comment);
     const board = fieldToBoardDigits(page.field);
 
     return {
         BOARD: board,
-        HAS_QUIZ: quiz.hasQuiz ? '1' : '0',
-        HOLD: quiz.hold,
-        QUEUE: quiz.queue,
+        HAS_QUIZ: queueInfo.hasQueue ? '1' : '0',
+        HOLD: queueInfo.hold,
+        QUEUE: queueInfo.queue,
+        HOLD_PROVIDED: queueInfo.holdProvided ? '1' : '0',
         PAGES: String(pages.length),
         USED_PAGE: 'last',
     };
