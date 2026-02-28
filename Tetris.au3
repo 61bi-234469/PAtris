@@ -163,6 +163,7 @@ Global $RenderTextures	= IniRead('settings.ini', 'SETTINGS', 'RENDER_TEXTURES', 
 Global $DasCancel		= IniRead('settings.ini', 'SETTINGS', 'DAS_CANCELLATION', True)	= 'True' ? True : False
 Global $MirrorQueue		= IniRead('settings.ini', 'SETTINGS', 'MIRROR_QUEUE', True)		= 'True' ? True : False
 Global $HoldNextUsePalette = IniRead('settings.ini', 'SETTINGS', 'HOLDNEXT_USE_PALETTE', False) = 'True' ? True : False
+Global $QueueFill = IniRead('settings.ini', 'SETTINGS', 'QUEUE_FILL', True) = 'True' ? True : False
 
 ;drag file holder
 Global $DROPFILE[2] = [False,'']
@@ -445,9 +446,10 @@ Global Enum $MODEBUTTON, $SETTBUTTON, $HOLDNEXT, $FUMENIMPORT, $FUMEN, $TESTBUTT
 			$SNAPBUTTON, _
 			$HILIBUTTON, $HCLRBUTTON, _
 			$ACOLCHECK, _
+			$QFILLCHECK, _
 			$MIRRBUTTON
 
-Global $BUTTONS[18][3]
+Global $BUTTONS[19][3]
 Global $BUTTONTEXT[6] = ['TRAINING  MODE  ', '        SETTINGS', 'HOLD/NEXT ', ' FUMEN Import', '  FUMEN  Export', '          TEST  ']
 If Not $DEBUG Then ReDim $BUTTONTEXT[5]
 
@@ -461,8 +463,9 @@ $BUTTONS[$HOLDDELETE][2] = BoundBox($AlignL + 50, $AlignT + 155,  20,  20)
 $BUTTONS[$HOLDCHECK ][2] = BoundBox($AlignL,      $AlignT + 232,  75,  18)
 $BUTTONS[$NEXTBUTTON][2] = BoundBox($AlignR,      $AlignT,        75, 240)
 $BUTTONS[$SHUFBUTTON][2] = BoundBox($AlignR + 50, $AlignT +   5,  20,  20)
-$BUTTONS[$UNDOBUTTON][2] = BoundBox($AlignR,      $AlignT + 250,  35,  35)
-$BUTTONS[$REDOBUTTON][2] = BoundBox($AlignR + 40, $AlignT + 250,  35,  35)
+$BUTTONS[$UNDOBUTTON][2] = BoundBox($AlignR,      $AlignT + 270,  35,  35)
+$BUTTONS[$REDOBUTTON][2] = BoundBox($AlignR + 40, $AlignT + 270,  35,  35)
+$BUTTONS[$QFILLCHECK][2] = BoundBox($AlignR,      $AlignT + 247,  75,  18)
 $BUTTONS[$SNAPBUTTON][2] = BoundBox($AlignR,      $AlignB -  45,  75,  40)
 $BUTTONS[$MIRRBUTTON][2] = BoundBox($AlignR,      $AlignB -  90,  75,  40)
 $BUTTONS[$HOLDNEXT][2] = BoundBox($AlignR,        $AlignB -  213,  75,  35)
@@ -956,6 +959,7 @@ Func Main()
 			If $BUTTONS[$SNAPBUTTON][0] Then Return SnapBoard()
 			If $BUTTONS[$FUMENIMPORT][0] Then Return FumenImport()
 			If $BUTTONS[$FUMEN][0] Then Return Fumen()
+			If $BUTTONS[$QFILLCHECK][0] Then Return QueueFillToggle()
 			If $BUTTONS[$MIRRBUTTON][0] Then Return GridMirror()
 			If $BUTTONS[$UNDOBUTTON][0] Then Return Undo()
 			If $BUTTONS[$REDOBUTTON][0] Then Return Redo()
@@ -1698,6 +1702,7 @@ Func DrawGrid($DRW)
 EndFunc   ;==>DrawGrid
 Func DrawPiece($DRW)
 	Local $Piece = BagGetPiece()
+	If $Piece < 0 Or $Piece > 6 Then Return
 	Local $Shape = PieceGetShape($Piece, $PieceA)
 	Local $X = $PieceX
 	Local $Y = $PieceY
@@ -1712,6 +1717,7 @@ Func DrawPiece($DRW)
 EndFunc   ;==>DrawPiece
 Func DrawGuide($DRW)
 	Local $Piece = BagGetPiece()
+	If $Piece < 0 Or $Piece > 6 Then Return
 	Local $Shape = PieceGetShape($Piece, $PieceA)
 	Local $X = $PieceX
 	Local $Y = $PieceY
@@ -1744,7 +1750,9 @@ Func DrawMiniBlock($DRW, $X, $Y, $S, $k)
 		_WinAPI_AlphaBlend($DRW, $X, $Y, $S, $S, $BDC, $T, 0, $TEXTURE_S, $TEXTURE_S, 255, True)
 	Else
 		If $k = 9 Then
-			_WinAPI_FrameRect($DRW, Rect($X, $Y, $S-1, $S-1), $Brush[BagGetPiece() + 1])
+			Local $GuidePiece = BagGetPiece()
+			If $GuidePiece < 0 Or $GuidePiece > 6 Then $GuidePiece = 0
+			_WinAPI_FrameRect($DRW, Rect($X, $Y, $S-1, $S-1), $Brush[$GuidePiece + 1])
 		Else
 			_WinAPI_SelectObject($DRW, $Brush[$k])
 			_WinAPI_PatBlt($DRW, $X, $Y, $S, $S, $PATCOPY)
@@ -1810,6 +1818,7 @@ Func DrawNext($DRW)
 	Local $Size = 14
 	Local $Distance = 2.7857
 	Local $B = $BUTTONS[$NEXTBUTTON][2]
+	Local $BagLen = IsArray($Bag) ? UBound($Bag) : 0
 
 	_WinAPI_SelectObject($DRW, $Font10)
 	_WinAPI_SetBkMode   ($DRW, $TRANSPARENT)
@@ -1822,9 +1831,14 @@ Func DrawNext($DRW)
 
 	Local $X, $Y
 	Local $i, $j, $k
-	Local $S = (BagGetSeparator())[1]
+	Local $S = -1
+	If $BagLen > 0 Then
+		Local $Separator = BagGetSeparator()
+		If IsArray($Separator) And UBound($Separator) > 1 Then $S = $Separator[1]
+	EndIf
 
 	For $k = 1 To 6
+		If $BagLen <= $k Then ExitLoop
 		If $Bag[$k] = -1 Then ExitLoop
 
 		If $k < 6 Then
@@ -1844,7 +1858,7 @@ Func DrawNext($DRW)
 		EndIf
 
 		;bag separator
-		If $k = $S Then _WinAPI_FillRect($DRW, Rect($B[0]+5, $B[1] + $Size*$Distance*$k - $Size/2, $B[2]-10, 1), $Brush[$CREV])
+		If $S >= 0 And $k = $S Then _WinAPI_FillRect($DRW, Rect($B[0]+5, $B[1] + $Size*$Distance*$k - $Size/2, $B[2]-10, 1), $Brush[$CREV])
 	Next
 
 
@@ -1957,15 +1971,15 @@ Func DrawMirrorButton($DRW)
 	_WinAPI_BitBlt($DRW, $B[0] + 8, $B[1] + 3, 58, 35, $BDC, 20, 36, $SRCINVERT)
 EndFunc
 Func DrawUndoButton($DRW)
-	Local $X, $Y
+	Local $BUndo = $BUTTONS[$UNDOBUTTON][2]
+	Local $BRedo = $BUTTONS[$REDOBUTTON][2]
+	Local $X = $BUndo[0]
+	Local $Y = $BUndo[1]
 
-	$X = $AlignR
-	$Y = $AlignT + 250
-
-	_WinAPI_FillRect($DRW, Rect($X,    $Y, 35, 35), $Brush[$CBOX])
-	_WinAPI_FillRect($DRW, Rect($X+40, $Y, 35, 35), $Brush[$CBOX])
-	If $BUTTONS[$UNDOBUTTON][0] Then _WinAPI_FrameRect($DRW, Rect($X,    $Y, 35, 35), $Brush[$CTXT])
-	If $BUTTONS[$REDOBUTTON][0] Then _WinAPI_FrameRect($DRW, Rect($X+40, $Y, 35, 35), $Brush[$CTXT])
+	_WinAPI_FillRect($DRW, Rect($BUndo[0], $BUndo[1], $BUndo[2], $BUndo[3]), $Brush[$CBOX])
+	_WinAPI_FillRect($DRW, Rect($BRedo[0], $BRedo[1], $BRedo[2], $BRedo[3]), $Brush[$CBOX])
+	If $BUTTONS[$UNDOBUTTON][0] Then _WinAPI_FrameRect($DRW, Rect($BUndo[0], $BUndo[1], $BUndo[2], $BUndo[3]), $Brush[$CTXT])
+	If $BUTTONS[$REDOBUTTON][0] Then _WinAPI_FrameRect($DRW, Rect($BRedo[0], $BRedo[1], $BRedo[2], $BRedo[3]), $Brush[$CTXT])
 
 	_WinAPI_SelectObject($DRW, $Brush[5])
 	_WinAPI_SelectObject($BDC, $ICONBMP)
@@ -2034,6 +2048,11 @@ Func DrawCheckboxes($DRW)
 	_WinAPI_DrawText($DRW, "INFINITE", Rect($B[0] + 16, $B[1] + 3, 55, 15), $DT_LEFT)
 	_WinAPI_FrameRect($DRW, Rect($B[0] + 2, $B[1] + 4, 11, 11), $Brush[$CTXT])
 	If $InfiniteSwaps = True Then _WinAPI_FillRect($DRW, Rect($B[0] + 4, $B[1] + 6,  7,  7), $Brush[8])
+
+	$B = $BUTTONS[$QFILLCHECK][2]
+	_WinAPI_DrawText($DRW, "QUEUE FILL", Rect($B[0] + 16, $B[1] + 3, 58, 15), $DT_LEFT)
+	_WinAPI_FrameRect($DRW, Rect($B[0] + 2, $B[1] + 4, 11, 11), $Brush[$CTXT])
+	If $QueueFill = True Then _WinAPI_FillRect($DRW, Rect($B[0] + 4, $B[1] + 6,  7,  7), $Brush[8])
 
 	If $HighlightMode Then Return
 
@@ -2769,13 +2788,13 @@ Func FumenSelectExportMode()
 
 	Local $W = WinGetPos($GUI)
 	Local $PopupW = 320
-	Local $PopupH = 145
+	Local $PopupH = 190
 	Local $Popup = GUICreate($WTITLE, $PopupW, $PopupH, $W[0]+$W[2]/2-$PopupW/2, $W[1]+$W[3]/2-$PopupH/2, BitOR($WS_CAPTION, $WS_SYSMENU), -1, $GUI)
 
 	GUICtrlCreateLabel('Choose FUMEN export mode', 15, 12, 280, 18)
-	Local $BtnCurrent = GUICtrlCreateButton('Current Page', 18, 45, 130, 28)
-	Local $BtnAll = GUICtrlCreateButton('All History Pages', 170, 45, 130, 28)
-	Local $BtnCancel = GUICtrlCreateButton('Cancel', 115, 88, 90, 26)
+	Local $BtnCurrent = GUICtrlCreateButton('Current Page', 30, 45, 260, 30)
+	Local $BtnAll = GUICtrlCreateButton('All History Pages', 30, 85, 260, 30)
+	Local $BtnCancel = GUICtrlCreateButton('Cancel', 30, 125, 260, 30)
 	GUICtrlSetState($BtnCurrent, $GUI_DEFBUTTON)
 
 	GUISetState(@SW_SHOW, $Popup)
@@ -3427,7 +3446,9 @@ Func Drop()
 	Sound('drop')
 	$Moves += 1
 
-	PieceFreeze($GRID, BagGetPiece(), $PieceA, $PieceX, $PieceY)
+	Local $Piece = BagGetPiece()
+	If $Piece < 0 Or $Piece > 6 Then Return lose_game()
+	PieceFreeze($GRID, $Piece, $PieceA, $PieceX, $PieceY)
 	CheckLines()
 
 	PieceNext()
@@ -3467,6 +3488,8 @@ EndFunc
 Func BagFill()
 	Local $Fill
 
+	If Not $QueueFill Then Return
+
 	While UBound($Bag) < 7
 		$Fill = __MemCopy($BagPieces)
 
@@ -3495,9 +3518,11 @@ Func BagFill()
 
 EndFunc
 Func BagNext()
-	BagFill()
+	If $QueueFill Then BagFill()
+	If Not IsArray($Bag) Then Return
+	If UBound($Bag) = 0 Then Return
 
-	If $Bag[1] = -1 Then
+	If UBound($Bag) > 1 And $Bag[1] = -1 Then
 		If $PieceH = -1 Then
 			_ArrayDelete($Bag, 0)
 			_ArrayDelete($Bag, 0)
@@ -3510,7 +3535,9 @@ Func BagNext()
 	EndIf
 EndFunc
 Func BagGetPiece()
-	BagFill()
+	If $QueueFill Then BagFill()
+	If Not IsArray($Bag) Then Return -1
+	If UBound($Bag) = 0 Then Return -1
 	Return $Bag[0]
 EndFunc
 Func BagGetSeparator()
@@ -3548,7 +3575,8 @@ Func BagMirror()
 	$CHG = True
 EndFunc
 Func BagReset()
-	$Bag = 0
+	Local $Empty[0]
+	$Bag = $Empty
 	If $StaticBag Then
 		BagLoadFromString(FileRead('piece_list.txt'))
 	EndIf
@@ -3761,6 +3789,17 @@ Func HoldModeToggle()
 
 	$CHG = True
 EndFunc
+Func QueueFillToggle()
+	$QueueFill = $QueueFill ? False : True
+	IniWrite('settings.ini', 'SETTINGS', 'QUEUE_FILL', $QueueFill)
+	If $QueueFill Then
+		BagFill()
+		DrawComment(0, 1400, 'QUEUE FILL', 'ON: append 7bag pieces.')
+	Else
+		DrawComment(0, 1600, 'QUEUE FILL', 'OFF: keep current queue only.')
+	EndIf
+	$CHG = True
+EndFunc
 Func HoldMirror()
 	Local $LOOKUP[7] = [0, 5, 4, 3, 2, 1, 6]
 	If $PieceH >= 0 And $PieceH < UBound($LOOKUP) Then $PieceH = $LOOKUP[$PieceH]
@@ -3769,7 +3808,10 @@ Func HoldShuffle()
 	Local $BagSeparator
 
 	If $PieceH <> -1 Then
+		If Not IsArray($Bag) Or UBound($Bag) = 0 Then Return
 		$BagSeparator = BagGetSeparator()
+		If UBound($BagSeparator) < 2 Then Return
+		If $BagSeparator[1] <= $BagSeparator[0] Then Return
 		__Swap($PieceH, $Bag[Random($BagSeparator[0], $BagSeparator[1] - 1, 1)])
 	EndIf
 
@@ -3801,16 +3843,21 @@ Func PieceNext()
 	$Swapped = False
 	$CHG = True
 
-	If Not PieceFits(BagGetPiece(), $PieceA, $PieceX, $PieceY) Then Return lose_game()
+	Local $Piece = BagGetPiece()
+	If $Piece < 0 Or $Piece > 6 Then Return lose_game()
+	If Not PieceFits($Piece, $PieceA, $PieceX, $PieceY) Then Return lose_game()
 EndFunc
 Func PieceHold()
 	If $Swapped Or $Lost Then Return
 
 	PieceReset()
 	If $PieceH = -1 Then
-		$PieceH = BagGetPiece()
+		Local $CurrentPiece = BagGetPiece()
+		If $CurrentPiece < 0 Or $CurrentPiece > 6 Then Return lose_game()
+		$PieceH = $CurrentPiece
 		PieceNext()
 	Else
+		If Not IsArray($Bag) Or UBound($Bag) = 0 Then Return lose_game()
 		__Swap($Bag[0], $PieceH)
 	EndIf
 
@@ -3819,7 +3866,9 @@ Func PieceHold()
 
 	Sound('hold')
 
-	If Not PieceFits(BagGetPiece(), $PieceA, $PieceX, $PieceY) Then Return lose_game()
+	Local $Piece = BagGetPiece()
+	If $Piece < 0 Or $Piece > 6 Then Return lose_game()
+	If Not PieceFits($Piece, $PieceA, $PieceX, $PieceY) Then Return lose_game()
 EndFunc   ;==>PieceHold
 
 
@@ -4252,12 +4301,14 @@ EndFunc
 Func PieceMove($Angle, $X, $Y)
 	Local $Rotation = $Angle
 	Local $Sound
+	Local $Piece = BagGetPiece()
+	If $Piece < 0 Or $Piece > 6 Then Return False
 
 	$Angle = Mod($PieceA + $Angle, 4)
 	$X = $PieceX + $X
 	$Y = $PieceY + $Y
 
-	If PieceFits(BagGetPiece(), $Angle, $X, $Y) Then
+	If PieceFits($Piece, $Angle, $X, $Y) Then
 		$PieceA = $Angle
 		$PieceX = $X
 		$PieceY = $Y
@@ -4291,6 +4342,7 @@ Func PieceMove($Angle, $X, $Y)
 EndFunc
 Func PieceKick(ByRef $Angle, ByRef $X, ByRef $Y, $Rotation)
 	Local $Piece = BagGetPiece()
+	If $Piece < 0 Or $Piece > 6 Then Return False
 
 	If $Piece = 0 Then ;I piece
 		Switch $Rotation
