@@ -1,0 +1,13 @@
+{
+  "name": "four-tris-fumen-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Node bridge for four-tris fumen import/export",
+  "main": "bridge.js",
+  "scripts": {
+    "bridge": "node bridge.js"
+  },
+  "dependencies": {
+    "tetris-fumen": "1.1.3"
+  }
+}

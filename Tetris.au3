@@ -1085,9 +1085,19 @@ Func KeyProc($nCode, $wParam, $lParam)
 	Return _WinAPI_CallNextHookEx($KEYHOOK, $nCode, $wParam, $lParam)
 EndFunc
 Func FileProc($FileName)
-	Local $Bitmap = _LoadPng($FileName)
-	If $Bitmap <> 0 Then FillBoardFromBitmap($Bitmap)
-	_WinAPI_DeleteObject($Bitmap)
+	Local $LowerName = StringLower($FileName)
+	If StringRight($LowerName, 4) = '.png' Then
+		Local $Bitmap = _LoadPng($FileName)
+		If $Bitmap <> 0 Then FillBoardFromBitmap($Bitmap)
+		_WinAPI_DeleteObject($Bitmap)
+		Return
+	EndIf
+
+	If StringRight($LowerName, 4) = '.txt' Or StringRight($LowerName, 6) = '.fumen' Or StringRight($LowerName, 4) = '.fum' Then
+		Local $Text = FileRead($FileName)
+		If @error Then Return
+		TryImportFumenFromText($Text)
+	EndIf
 EndFunc
 Func WMPaint($hWnd, $iMsg, $wParam, $lParam)
 	$CHG = True
@@ -2532,12 +2542,16 @@ Func Copy()
 	ClipPut(StateEncode())
 EndFunc
 Func Paste()
-	If StateDecode(ClipGet()) Then
+	Local $Clipboard = ClipGet()
+	If StateDecode($Clipboard) Then
 		If $ShuffleBag Then
 			If $ShuffleHold Then HoldShuffle()
 			BagShuffle()
 			BagReseed()
 		EndIf
+
+	ElseIf TryImportFumenFromText($Clipboard) Then
+		Return
 
 	;StateDecode() Failed, Clipboard contains BMP?
 	ElseIf _ClipBoard_IsFormatAvailable($CF_BITMAP) Then
@@ -2724,6 +2738,22 @@ Func _FumenValueEncode($value, $encodeNum)
 EndFunc
 
 Func Fumen()
+	If UBound($GRID, 1) <> 10 Or UBound($GRID, 2) <> 24 Then
+		DrawComment(0, 1800, 'FUMEN ERROR', 'Fumen requires 10x24 field.')
+		Return
+	EndIf
+
+	BagFill()
+
+	Local $FumenEncode = FumenBridgeEncode()
+	If $FumenEncode = '' Then
+		Return FumenLegacy()
+	EndIf
+
+	ShellExecute("https://61bi-234469.github.io/fumen-for-mobile-ts/#?d=" & $FumenEncode)
+EndFunc
+
+Func FumenLegacy()
 	Local $FumenEncode = ""
 	Local $FumenUrl = "https://61bi-234469.github.io/fumen-for-mobile-ts/#?d=v115@"
 	;~ space, I, J, S, O, Z, L, T, garbage
@@ -2819,6 +2849,218 @@ Func Fumen()
 		$FumenEncode &= _FumenValueEncode($QueueVal, 5)
 	EndIf
 	ShellExecute($FumenUrl & $FumenEncode)
+EndFunc
+
+Func FumenBridgeEncode()
+	Local $BoardData = ''
+	Local $Queue = ''
+	Local $Hold = PieceGetName($PieceH)
+
+	For $j = 1 To UBound($GRID, 2) - 1
+		For $i = 0 To UBound($GRID, 1) - 1
+			Local $Cell = $GRID[$i][$j]
+			If $Cell < 0 Then $Cell = 0
+			If $Cell > 8 Then $Cell = 8
+			$BoardData &= $Cell
+		Next
+	Next
+
+	If StringInStr('IJLSOZT-', $Hold) = 0 Then $Hold = '-'
+	For $i = 0 To UBound($Bag) - 1
+		Local $Name = PieceGetName($Bag[$i])
+		If StringInStr('IJLSOZT', $Name) > 0 Then $Queue &= $Name
+	Next
+
+	Local $Tag = @AutoItPID & '_' & @YEAR & @MON & @MDAY & '_' & @HOUR & @MIN & @SEC & '_' & @MSEC & '_' & Random(1000, 9999, 1)
+	Local $InputPath = @TempDir & '\fourtris_fumen_encode_' & $Tag & '.txt'
+	Local $Input = FileOpen($InputPath, 2)
+	If $Input = -1 Then Return ''
+
+	FileWrite($Input, 'BOARD=' & $BoardData & @CRLF)
+	FileWrite($Input, 'HOLD=' & $Hold & @CRLF)
+	FileWrite($Input, 'QUEUE=' & $Queue & @CRLF)
+	FileClose($Input)
+
+	Local $StdOut = ''
+	Local $StdErr = ''
+	Local $ExitCode = -1
+	Local $RunOK = RunFumenBridge('encode', $InputPath, $StdOut, $StdErr, $ExitCode)
+	FileDelete($InputPath)
+
+	Local $Resp = ParseBridgeResponse($StdOut)
+	If Not $RunOK Or __BridgeResponseGet($Resp, 'OK', '0') <> '1' Then
+		DrawComment(0, 1400, 'FUMEN EXPORT', 'Bridge failed. Using legacy export.')
+		Return ''
+	EndIf
+
+	Local $Token = __BridgeResponseGet($Resp, 'FUMEN', '')
+	If StringRegExp($Token, '(?i)^v115@[A-Za-z0-9+/?]+$') = 0 Then
+		DrawComment(0, 1400, 'FUMEN EXPORT', 'Bridge response invalid. Using legacy.')
+		Return ''
+	EndIf
+
+	Return $Token
+EndFunc
+
+Func FumenBridgeDecode($Text)
+	Local $Token = ExtractFumenToken($Text)
+	If $Token = '' Then Return
+
+	Local $Tag = @AutoItPID & '_' & @YEAR & @MON & @MDAY & '_' & @HOUR & @MIN & @SEC & '_' & @MSEC & '_' & Random(1000, 9999, 1)
+	Local $InputPath = @TempDir & '\fourtris_fumen_decode_' & $Tag & '.txt'
+	Local $Input = FileOpen($InputPath, 2)
+	If $Input = -1 Then Return
+
+	FileWrite($Input, 'FUMEN=' & $Token & @CRLF)
+	FileClose($Input)
+
+	Local $StdOut = ''
+	Local $StdErr = ''
+	Local $ExitCode = -1
+	Local $RunOK = RunFumenBridge('decode', $InputPath, $StdOut, $StdErr, $ExitCode)
+	FileDelete($InputPath)
+
+	Local $Resp = ParseBridgeResponse($StdOut)
+	If Not $RunOK Or __BridgeResponseGet($Resp, 'OK', '0') <> '1' Then
+		If $ExitCode = 9009 Or StringInStr(StringLower($StdErr), 'not recognized') > 0 Then
+			DrawComment(0, 1600, 'FUMEN IMPORT', 'Node bridge unavailable.')
+		ElseIf Not FileExists(@ScriptDir & '\tools\fumen-bridge\bridge.js') Then
+			DrawComment(0, 1600, 'FUMEN IMPORT', 'Bridge script not found.')
+		Else
+			DrawComment(0, 1600, 'FUMEN IMPORT', 'Failed to decode fumen.')
+		EndIf
+		Return
+	EndIf
+
+	Local $BoardData = __BridgeResponseGet($Resp, 'BOARD', '')
+	If StringRegExp($BoardData, '^[0-8]{230}$') = 0 Then
+		DrawComment(0, 1600, 'FUMEN IMPORT', 'Decoded board is invalid.')
+		Return
+	EndIf
+
+	Local $HasQuiz = (__BridgeResponseGet($Resp, 'HAS_QUIZ', '0') = '1')
+	Local $Hold = StringUpper(StringLeft(__BridgeResponseGet($Resp, 'HOLD', '-'), 1))
+	Local $Queue = StringUpper(__BridgeResponseGet($Resp, 'QUEUE', ''))
+	Local $Pages = Number(__BridgeResponseGet($Resp, 'PAGES', '1'))
+	Local $UsedPage = __BridgeResponseGet($Resp, 'USED_PAGE', 'last')
+
+	Local $Data[6] = [$BoardData, $HasQuiz, $Hold, $Queue, $Pages, $UsedPage]
+	Return $Data
+EndFunc
+
+Func TryImportFumenFromText($Text)
+	If ExtractFumenToken($Text) = '' Then Return False
+	If UBound($GRID, 1) <> 10 Or UBound($GRID, 2) <> 24 Then
+		DrawComment(0, 1800, 'FUMEN ERROR', 'Fumen requires 10x24 field.')
+		Return False
+	EndIf
+
+	Local $Decoded = FumenBridgeDecode($Text)
+	If Not IsArray($Decoded) Then Return False
+
+	NewUndo()
+
+	Local $k = 1
+	For $i = 0 To UBound($GRID, 1) - 1
+		$GRID[$i][0] = 0
+	Next
+	For $j = 1 To UBound($GRID, 2) - 1
+		For $i = 0 To UBound($GRID, 1) - 1
+			$GRID[$i][$j] = Number(StringMid($Decoded[0], $k, 1))
+			$k += 1
+		Next
+	Next
+
+	If $Decoded[1] Then
+		Local $HoldID = PieceGetID($Decoded[2])
+		If $HoldID >= 0 And $HoldID <= 6 Then
+			$PieceH = $HoldID
+		Else
+			$PieceH = -1
+		EndIf
+
+		Local $QueueText = $Decoded[3]
+		Local $NewBag[0]
+		For $i = 1 To StringLen($QueueText)
+			Local $PieceID = PieceGetID(StringMid($QueueText, $i, 1))
+			If $PieceID < 0 Or $PieceID > 6 Then ContinueLoop
+
+			Local $Len = UBound($NewBag)
+			ReDim $NewBag[$Len + 1]
+			$NewBag[$Len] = $PieceID
+		Next
+		$Bag = $NewBag
+	EndIf
+
+	PieceReset()
+	$Lost = False
+	$CHG = True
+	Return True
+EndFunc
+
+Func ExtractFumenToken($Text)
+	Local $Match = StringRegExp($Text, '(?i)(v115@[A-Za-z0-9+/?]+)', 1)
+	If Not IsArray($Match) Then Return ''
+	Return $Match[0]
+EndFunc
+
+Func RunFumenBridge($Mode, $InputPath, ByRef $StdOut, ByRef $StdErr, ByRef $ExitCode)
+	$StdOut = ''
+	$StdErr = ''
+	$ExitCode = -1
+
+	Local $BridgePath = @ScriptDir & '\tools\fumen-bridge\bridge.js'
+	If Not FileExists($BridgePath) Then
+		$StdErr = 'bridge.js not found'
+		Return False
+	EndIf
+
+	Local $Tag = @AutoItPID & '_' & @YEAR & @MON & @MDAY & '_' & @HOUR & @MIN & @SEC & '_' & @MSEC & '_' & Random(1000, 9999, 1)
+	Local $StdOutPath = @TempDir & '\fourtris_fumen_stdout_' & $Tag & '.txt'
+	Local $StdErrPath = @TempDir & '\fourtris_fumen_stderr_' & $Tag & '.txt'
+
+	Local $Cmd = @ComSpec & ' /d /c ""node "' & $BridgePath & '" ' & $Mode & ' --input "' & $InputPath & '" 1>"' & $StdOutPath & '" 2>"' & $StdErrPath & '""'
+	$ExitCode = RunWait($Cmd, @ScriptDir, @SW_HIDE)
+
+	If FileExists($StdOutPath) Then
+		$StdOut = FileRead($StdOutPath)
+		FileDelete($StdOutPath)
+	EndIf
+
+	If FileExists($StdErrPath) Then
+		$StdErr = FileRead($StdErrPath)
+		FileDelete($StdErrPath)
+	EndIf
+
+	Return $ExitCode = 0
+EndFunc
+
+Func ParseBridgeResponse($Text)
+	Local $Pairs[0][2]
+	Local $Lines = StringSplit(StringStripCR($Text), @LF, 2)
+
+	For $i = 0 To UBound($Lines) - 1
+		Local $Line = StringStripWS($Lines[$i], 3)
+		If $Line = '' Then ContinueLoop
+
+		Local $Eq = StringInStr($Line, '=')
+		If $Eq <= 1 Then ContinueLoop
+
+		Local $Len = UBound($Pairs)
+		ReDim $Pairs[$Len + 1][2]
+		$Pairs[$Len][0] = StringUpper(StringLeft($Line, $Eq - 1))
+		$Pairs[$Len][1] = StringMid($Line, $Eq + 1)
+	Next
+
+	Return $Pairs
+EndFunc
+
+Func __BridgeResponseGet(ByRef $Pairs, $Key, $Default = '')
+	Local $Search = StringUpper($Key)
+	For $i = 0 To UBound($Pairs) - 1
+		If $Pairs[$i][0] = $Search Then Return $Pairs[$i][1]
+	Next
+	Return $Default
 EndFunc
 
 Func SnapBoard()

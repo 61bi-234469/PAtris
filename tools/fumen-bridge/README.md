@@ -1,0 +1,51 @@
+# four-tris fumen bridge
+
+Node.js bridge for `Tetris.au3` to encode/decode fumen (`v115`) using `tetris-fumen`.
+
+## Requirements
+
+- Node.js
+
+## Setup
+
+```powershell
+cd tools/fumen-bridge
+npm ci
+```
+
+If `npm ci` is not available for your environment, run:
+
+```powershell
+npm install
+```
+
+## CLI
+
+```powershell
+node bridge.js encode --input "<input-file>"
+node bridge.js decode --input "<input-file>"
+```
+
+Input is line-based `KEY=VALUE`.
+
+- `encode`:
+  - `BOARD=<230 digits 0-8>`
+  - `HOLD=<I|J|L|O|S|T|Z|->`
+  - `QUEUE=<IJLOSTZ...>`
+- `decode`:
+  - `FUMEN=<v115 token or URL>`
+
+Output is line-based:
+
+- success:
+  - `OK=1`
+  - plus result keys (`FUMEN`, `BOARD`, `HAS_QUIZ`, `HOLD`, `QUEUE`, `PAGES`, `USED_PAGE`)
+- failure:
+  - `OK=0`
+  - `ERR=...`
+  - `MSG=...`
+
+## Known constraints
+
+- Bridge supports only four-tris standard board size for integration: `10x24` (`10x23` fumen area + 1 hidden row in app).
+- Multi-page decode uses the **last** page.
