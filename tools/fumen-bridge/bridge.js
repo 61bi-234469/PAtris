@@ -41,7 +41,7 @@ function printError(code, message) {
 
 function parseArgs(argv) {
     if (argv.length < 3) {
-        throw new Error('usage: node bridge.js <encode|decode> --input <file>');
+        throw new Error('usage: node bridge.js <encode|encode-pages|decode> --input <file>');
     }
 
     const mode = String(argv[2]).toLowerCase();
@@ -54,8 +54,8 @@ function parseArgs(argv) {
         }
     }
 
-    if (mode !== 'encode' && mode !== 'decode') {
-        throw new Error('mode must be encode or decode');
+    if (mode !== 'encode' && mode !== 'decode' && mode !== 'encode-pages') {
+        throw new Error('mode must be encode, encode-pages or decode');
     }
 
     if (!inputPath) {
@@ -175,25 +175,45 @@ function parseCommentQueue(comment) {
     };
 }
 
-function runEncode(values) {
-    const board = String(values.BOARD ?? '');
-    const hold = normalizeHold(values.HOLD ?? '-');
-    const queue = normalizeQueue(values.QUEUE ?? '');
+function createEncodePage(board, holdValue, queueValue) {
+    const hold = normalizeHold(holdValue ?? '-');
+    const queue = normalizeQueue(queueValue ?? '');
 
     const field = Field.create(boardDigitsToField(board), '__________');
     const comment = hold === '-' ? queue : `${hold}:${queue}`;
-    const token = encoder.encode([
-        {
-            field,
-            comment,
-            flags: {
-                lock: true,
-                colorize: true,
-            },
+    return {
+        field,
+        comment,
+        flags: {
+            lock: true,
+            colorize: true,
         },
-    ]);
+    };
+}
+
+function runEncode(values) {
+    const board = String(values.BOARD ?? '');
+    const token = encoder.encode([createEncodePage(board, values.HOLD ?? '-', values.QUEUE ?? '')]);
 
     return { FUMEN: token };
+}
+
+function runEncodePages(values) {
+    const count = Number.parseInt(String(values.PAGE_COUNT ?? '0'), 10);
+    if (!Number.isInteger(count) || count < 1) {
+        throw new Error('PAGE_COUNT must be >= 1');
+    }
+
+    const pages = [];
+    for (let i = 1; i <= count; i += 1) {
+        const board = String(values[`PAGE${i}_BOARD`] ?? '');
+        const hold = values[`PAGE${i}_HOLD`] ?? '-';
+        const queue = values[`PAGE${i}_QUEUE`] ?? '';
+        pages.push(createEncodePage(board, hold, queue));
+    }
+
+    const token = encoder.encode(pages);
+    return { FUMEN: token, PAGES: String(count) };
 }
 
 function runDecode(values) {
@@ -222,7 +242,14 @@ function main() {
     try {
         const args = parseArgs(process.argv);
         const values = parseKeyValueFile(args.inputPath);
-        const output = args.mode === 'encode' ? runEncode(values) : runDecode(values);
+        let output;
+        if (args.mode === 'encode') {
+            output = runEncode(values);
+        } else if (args.mode === 'encode-pages') {
+            output = runEncodePages(values);
+        } else {
+            output = runDecode(values);
+        }
         printOk(output);
         process.exit(0);
     } catch (error) {

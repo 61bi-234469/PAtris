@@ -23,6 +23,7 @@ npm install
 
 ```powershell
 node bridge.js encode --input "<input-file>"
+node bridge.js encode-pages --input "<input-file>"
 node bridge.js decode --input "<input-file>"
 ```
 
@@ -32,6 +33,11 @@ Input is line-based `KEY=VALUE`.
   - `BOARD=<230 digits 0-8>`
   - `HOLD=<I|J|L|O|S|T|Z|->`
   - `QUEUE=<IJLOSTZ...>`
+- `encode-pages`:
+  - `PAGE_COUNT=<n>`
+  - `PAGE1_BOARD=...`, `PAGE1_HOLD=...`, `PAGE1_QUEUE=...`
+  - `PAGE2_BOARD=...`, `PAGE2_HOLD=...`, `PAGE2_QUEUE=...`
+  - ...
 - `decode`:
   - `FUMEN=<v115 token or URL>`
 

@@ -2747,12 +2747,55 @@ Func Fumen()
 
 	BagFill()
 
-	Local $FumenEncode = FumenBridgeEncode()
-	If $FumenEncode = '' Then
-		Return FumenLegacy()
+	Local $Select = FumenSelectExportMode()
+	If $Select = 0 Then Return
+
+	Local $FumenEncode = ''
+	If $Select = 2 Then
+		$FumenEncode = FumenBridgeEncodeHistory()
+		If $FumenEncode = '' Then Return
+	Else
+		$FumenEncode = FumenBridgeEncode()
+		If $FumenEncode = '' Then
+			Return FumenLegacy()
+		EndIf
 	EndIf
 
 	ShellExecute("https://61bi-234469.github.io/fumen-for-mobile-ts/#?d=" & $FumenEncode)
+EndFunc
+Func FumenSelectExportMode()
+	SetHotkeys(1)
+	$KEYACTIVE = False
+
+	Local $W = WinGetPos($GUI)
+	Local $PopupW = 320
+	Local $PopupH = 145
+	Local $Popup = GUICreate($WTITLE, $PopupW, $PopupH, $W[0]+$W[2]/2-$PopupW/2, $W[1]+$W[3]/2-$PopupH/2, BitOR($WS_CAPTION, $WS_SYSMENU), -1, $GUI)
+
+	GUICtrlCreateLabel('Choose FUMEN export mode', 15, 12, 280, 18)
+	Local $BtnCurrent = GUICtrlCreateButton('Current Page', 18, 45, 130, 28)
+	Local $BtnAll = GUICtrlCreateButton('All History Pages', 170, 45, 130, 28)
+	Local $BtnCancel = GUICtrlCreateButton('Cancel', 115, 88, 90, 26)
+	GUICtrlSetState($BtnCurrent, $GUI_DEFBUTTON)
+
+	GUISetState(@SW_SHOW, $Popup)
+
+	Local $Mode = 0
+	While 1
+		Switch GUIGetMsg()
+			Case -3, $BtnCancel
+				ExitLoop
+			Case $BtnCurrent
+				$Mode = 1
+				ExitLoop
+			Case $BtnAll
+				$Mode = 2
+				ExitLoop
+		EndSwitch
+	WEnd
+
+	GUIDelete($Popup)
+	Return $Mode
 EndFunc
 Func FumenImport()
 	If UBound($GRID, 1) <> 10 Or UBound($GRID, 2) <> 24 Then
@@ -2760,14 +2803,7 @@ Func FumenImport()
 		Return
 	EndIf
 
-	SetHotkeys(1)
-	$KEYACTIVE = False
-
-	Local $W = WinGetPos($GUI)
 	Local $Text = ClipGet()
-	$Text = InputBox($WTITLE, 'Paste fumen token or URL', $Text, '', 360, 140, $W[0]+$W[2]/2-180, $W[1]+$W[3]/2-70, 0, $GUI)
-	If @error Then Return
-
 	If ExtractFumenToken($Text) = '' Then
 		DrawComment(0, 1600, 'FUMEN IMPORT', 'No valid fumen found.')
 		Return
@@ -2875,24 +2911,11 @@ Func FumenLegacy()
 EndFunc
 
 Func FumenBridgeEncode()
+	Local $State = SaveState()
 	Local $BoardData = ''
 	Local $Queue = ''
-	Local $Hold = PieceGetName($PieceH)
-
-	For $j = 1 To UBound($GRID, 2) - 1
-		For $i = 0 To UBound($GRID, 1) - 1
-			Local $Cell = $GRID[$i][$j]
-			If $Cell < 0 Then $Cell = 0
-			If $Cell > 8 Then $Cell = 8
-			$BoardData &= $Cell
-		Next
-	Next
-
-	If StringInStr('IJLSOZT-', $Hold) = 0 Then $Hold = '-'
-	For $i = 0 To UBound($Bag) - 1
-		Local $Name = PieceGetName($Bag[$i])
-		If StringInStr('IJLSOZT', $Name) > 0 Then $Queue &= $Name
-	Next
+	Local $Hold = '-'
+	If Not __FumenStateToPayload($State, $BoardData, $Hold, $Queue) Then Return ''
 
 	Local $Tag = @AutoItPID & '_' & @YEAR & @MON & @MDAY & '_' & @HOUR & @MIN & @SEC & '_' & @MSEC & '_' & Random(1000, 9999, 1)
 	Local $InputPath = @TempDir & '\fourtris_fumen_encode_' & $Tag & '.txt'
@@ -2929,6 +2952,123 @@ Func FumenBridgeEncode()
 	EndIf
 
 	Return $Token
+EndFunc
+
+Func FumenBridgeEncodeHistory()
+	Local $States = FumenCollectHistoryStates()
+	If Not IsArray($States) Then Return ''
+	If UBound($States) = 0 Then Return ''
+
+	Local $BoardData = ''
+	Local $Queue = ''
+	Local $Hold = '-'
+
+	Local $Tag = @AutoItPID & '_' & @YEAR & @MON & @MDAY & '_' & @HOUR & @MIN & @SEC & '_' & @MSEC & '_' & Random(1000, 9999, 1)
+	Local $InputPath = @TempDir & '\fourtris_fumen_encode_pages_' & $Tag & '.txt'
+	Local $Input = FileOpen($InputPath, 2)
+	If $Input = -1 Then Return ''
+
+	FileWrite($Input, 'PAGE_COUNT=' & UBound($States) & @CRLF)
+	For $i = 0 To UBound($States) - 1
+		$BoardData = ''
+		$Queue = ''
+		$Hold = '-'
+		If Not __FumenStateToPayload($States[$i], $BoardData, $Hold, $Queue) Then
+			FileClose($Input)
+			FileDelete($InputPath)
+			DrawComment(0, 1600, 'FUMEN EXPORT', 'History state is invalid.')
+			Return ''
+		EndIf
+
+		Local $Page = $i + 1
+		FileWrite($Input, 'PAGE' & $Page & '_BOARD=' & $BoardData & @CRLF)
+		FileWrite($Input, 'PAGE' & $Page & '_HOLD=' & $Hold & @CRLF)
+		FileWrite($Input, 'PAGE' & $Page & '_QUEUE=' & $Queue & @CRLF)
+	Next
+	FileClose($Input)
+
+	Local $StdOut = ''
+	Local $StdErr = ''
+	Local $ExitCode = -1
+	Local $RunOK = RunFumenBridge('encode-pages', $InputPath, $StdOut, $StdErr, $ExitCode)
+	FileDelete($InputPath)
+
+	Local $Resp = ParseBridgeResponse($StdOut)
+	If Not $RunOK Or __BridgeResponseGet($Resp, 'OK', '0') <> '1' Then
+		Local $BridgeMsg = StringLower(__BridgeResponseGet($Resp, 'MSG', ''))
+		Local $ErrText = StringLower($StdErr & ' ' & $BridgeMsg)
+		If StringInStr($ErrText, 'cannot find module') > 0 And StringInStr($ErrText, 'tetris-fumen') > 0 Then
+			DrawComment(0, 2000, 'FUMEN EXPORT', 'Run npm ci in tools/fumen-bridge')
+		Else
+			DrawComment(0, 1800, 'FUMEN EXPORT', 'Failed to encode history pages.')
+		EndIf
+		Return ''
+	EndIf
+
+	Local $Token = __BridgeResponseGet($Resp, 'FUMEN', '')
+	If StringRegExp($Token, '(?i)^v115@[A-Za-z0-9+/?]+$') = 0 Then
+		DrawComment(0, 1800, 'FUMEN EXPORT', 'Bridge response invalid.')
+		Return ''
+	EndIf
+
+	Return $Token
+EndFunc
+
+Func FumenCollectHistoryStates()
+	Local $States[0]
+	Local $UndoSize = UBound($UNDO)
+	Local $First = Mod($UNDO_INDEX + $UndoSize - $UNDO_MAX, $UndoSize)
+
+	For $n = 0 To $UNDO_MAX - 1
+		Local $Idx = Mod($First + $n, $UndoSize)
+		If Not IsArray($UNDO[$Idx]) Then ContinueLoop
+
+		Local $Len = UBound($States)
+		ReDim $States[$Len + 1]
+		$States[$Len] = $UNDO[$Idx]
+	Next
+
+	Local $Current = SaveState()
+	Local $Len2 = UBound($States)
+	ReDim $States[$Len2 + 1]
+	$States[$Len2] = $Current
+
+	Return $States
+EndFunc
+
+Func __FumenStateToPayload(ByRef $State, ByRef $BoardData, ByRef $Hold, ByRef $Queue)
+	$BoardData = ''
+	$Hold = '-'
+	$Queue = ''
+
+	If Not IsArray($State) Then Return False
+	If UBound($State) < 10 Then Return False
+	If Not IsArray($State[8]) Then Return False
+	If Not IsArray($State[9]) Then Return False
+
+	Local $StateGrid = $State[8]
+	Local $StateBag = $State[9]
+	If UBound($StateGrid, 1) <> UBound($GRID, 1) Then Return False
+	If UBound($StateGrid, 2) <> UBound($GRID, 2) Then Return False
+
+	For $j = 1 To UBound($StateGrid, 2) - 1
+		For $i = 0 To UBound($StateGrid, 1) - 1
+			Local $Cell = $StateGrid[$i][$j]
+			If $Cell < 0 Then $Cell = 0
+			If $Cell > 8 Then $Cell = 8
+			$BoardData &= $Cell
+		Next
+	Next
+
+	$Hold = PieceGetName($State[3])
+	If StringInStr('IJLSOZT-', $Hold) = 0 Then $Hold = '-'
+
+	For $i = 0 To UBound($StateBag) - 1
+		Local $Name = PieceGetName($StateBag[$i])
+		If StringInStr('IJLSOZT', $Name) > 0 Then $Queue &= $Name
+	Next
+
+	Return True
 EndFunc
 
 Func FumenBridgeDecode($Text)
