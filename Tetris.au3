@@ -56,8 +56,11 @@ DllCall('shcore.dll', 'uint', 'SetProcessDpiAwareness', 'uint', 2)
 ;auto resource unloading on exit
 OnAutoItExitRegister('UnloadResources')
 
-;installs the settings (only on the first launch)
-FileInstall('settings.ini', 'settings.ini', 0)
+;ensure settings file exists (defaults are provided by IniRead fallback values)
+If Not FileExists('settings.ini') Then
+	Local $SettingsFile = FileOpen('settings.ini', 2)
+	If $SettingsFile <> -1 Then FileClose($SettingsFile)
+EndIf
 ;install icon sprite sheet for icon-only buttons (compiled exe standalone support)
 FileInstall('buttons.bmp', @TempDir & '\four-tris-buttons.bmp', 1)
 
