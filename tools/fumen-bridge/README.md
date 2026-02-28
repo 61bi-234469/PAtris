@@ -65,3 +65,7 @@ Output is line-based:
 
 - Bridge supports only four-tris standard board size for integration: `10x24` (`10x23` fumen area + 1 hidden row in app).
 - Multi-page decode uses the **last** page.
+
+## Third-party licenses
+
+- `tetris-fumen` license details: `tools/fumen-bridge/THIRD_PARTY_NOTICES.md`

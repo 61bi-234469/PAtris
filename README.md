@@ -56,3 +56,8 @@ If you want to add a new feature or in generally contribute I recommend to get i
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
+
+## Third-party dependency licenses
+
+- Fumen bridge (`tools/fumen-bridge`) uses `tetris-fumen` (MIT).
+- Published notice: `tools/fumen-bridge/THIRD_PARTY_NOTICES.md`
