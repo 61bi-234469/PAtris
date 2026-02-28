@@ -58,6 +58,8 @@ OnAutoItExitRegister('UnloadResources')
 
 ;installs the settings (only on the first launch)
 FileInstall('settings.ini', 'settings.ini', 0)
+;install icon sprite sheet for icon-only buttons (compiled exe standalone support)
+FileInstall('buttons.bmp', @TempDir & '\four-tris-buttons.bmp', 1)
 
 #Region GAME SETTINGS
 Global $DEBUG = (Not @Compiled)
@@ -218,7 +220,8 @@ Global $GDI = _WinAPI_GetDC($GUI)
 Global $BUF = _WinAPI_CreateCompatibleBitmap($GDI, $SSize[0], $SSize[1])
 Global $DRW = _WinAPI_CreateCompatibleDC($GDI)
 Global $BDC = _WinAPI_CreateCompatibleDC($GDI)
-Global $ICONBMP = _WinAPI_LoadImage(0, 'buttons.bmp', $IMAGE_BITMAP, 0, 0, BitOR($LR_LOADFROMFILE, $LR_DEFAULTCOLOR))
+Global $ICONBMP = _WinAPI_LoadImage(0, @TempDir & '\four-tris-buttons.bmp', $IMAGE_BITMAP, 0, 0, BitOR($LR_LOADFROMFILE, $LR_DEFAULTCOLOR))
+If Not $ICONBMP Then $ICONBMP = _WinAPI_LoadImage(0, 'buttons.bmp', $IMAGE_BITMAP, 0, 0, BitOR($LR_LOADFROMFILE, $LR_DEFAULTCOLOR))
 Global $TRANSFORM = _WinAPI_CreateTransform($SCALE, 0, 0, $SCALE, 0, -$CURRENTVIEW)
 
 _WinAPI_SelectObject   ($DRW, $BUF)
