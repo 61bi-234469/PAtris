@@ -3445,6 +3445,10 @@ EndFunc
 Func Drop()
 	If $Lost Then Return
 
+	Local $Piece = BagGetPiece()
+	If ShouldLoseOnMissingPiece($Piece) Then Return lose_game()
+	If $Piece < 0 Or $Piece > 6 Then Return
+
 	Do
 	Until Not PieceMove(0, 0, +1)
 
@@ -3452,8 +3456,6 @@ Func Drop()
 	Sound('drop')
 	$Moves += 1
 
-	Local $Piece = BagGetPiece()
-	If $Piece < 0 Or $Piece > 6 Then Return lose_game()
 	PieceFreeze($GRID, $Piece, $PieceA, $PieceX, $PieceY)
 	CheckLines()
 
@@ -3545,6 +3547,15 @@ Func BagGetPiece()
 	If Not IsArray($Bag) Then Return -1
 	If UBound($Bag) = 0 Then Return -1
 	Return $Bag[0]
+EndFunc
+Func ShouldLoseOnMissingPiece($Piece)
+	If $Piece >= 0 And $Piece <= 6 Then Return False
+	If Not $QueueFill Then
+		If IsArray($Bag) Then
+			If UBound($Bag) = 0 Then Return False
+		EndIf
+	EndIf
+	Return True
 EndFunc
 Func BagGetSeparator()
 	Local $BagCount = Mod(UBound($Bag), ($BagType+1)*7)
@@ -3800,9 +3811,6 @@ Func QueueFillToggle()
 	IniWrite('settings.ini', 'SETTINGS', 'QUEUE_FILL', $QueueFill)
 	If $QueueFill Then
 		BagFill()
-		DrawComment(0, 1400, 'QUEUE FILL', 'ON: append 7bag pieces.')
-	Else
-		DrawComment(0, 1600, 'QUEUE FILL', 'OFF: keep current queue only.')
 	EndIf
 	$CHG = True
 EndFunc
@@ -3850,7 +3858,8 @@ Func PieceNext()
 	$CHG = True
 
 	Local $Piece = BagGetPiece()
-	If $Piece < 0 Or $Piece > 6 Then Return lose_game()
+	If ShouldLoseOnMissingPiece($Piece) Then Return lose_game()
+	If $Piece < 0 Or $Piece > 6 Then Return
 	If Not PieceFits($Piece, $PieceA, $PieceX, $PieceY) Then Return lose_game()
 EndFunc
 Func PieceHold()
@@ -3859,11 +3868,15 @@ Func PieceHold()
 	PieceReset()
 	If $PieceH = -1 Then
 		Local $CurrentPiece = BagGetPiece()
-		If $CurrentPiece < 0 Or $CurrentPiece > 6 Then Return lose_game()
+		If ShouldLoseOnMissingPiece($CurrentPiece) Then Return lose_game()
+		If $CurrentPiece < 0 Or $CurrentPiece > 6 Then Return
 		$PieceH = $CurrentPiece
 		PieceNext()
 	Else
-		If Not IsArray($Bag) Or UBound($Bag) = 0 Then Return lose_game()
+		If Not IsArray($Bag) Or UBound($Bag) = 0 Then
+			If $QueueFill Then Return lose_game()
+			Return
+		EndIf
 		__Swap($Bag[0], $PieceH)
 	EndIf
 
@@ -3873,7 +3886,8 @@ Func PieceHold()
 	Sound('hold')
 
 	Local $Piece = BagGetPiece()
-	If $Piece < 0 Or $Piece > 6 Then Return lose_game()
+	If ShouldLoseOnMissingPiece($Piece) Then Return lose_game()
+	If $Piece < 0 Or $Piece > 6 Then Return
 	If Not PieceFits($Piece, $PieceA, $PieceX, $PieceY) Then Return lose_game()
 EndFunc   ;==>PieceHold
 
