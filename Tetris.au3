@@ -3875,9 +3875,12 @@ Func PieceHold()
 	Else
 		If Not IsArray($Bag) Or UBound($Bag) = 0 Then
 			If $QueueFill Then Return lose_game()
-			Return
+			Local $HeldPiece[1] = [$PieceH]
+			$Bag = $HeldPiece
+			$PieceH = -1
+		Else
+			__Swap($Bag[0], $PieceH)
 		EndIf
-		__Swap($Bag[0], $PieceH)
 	EndIf
 
 	If Not $InfiniteSwaps = True Then $Swapped = True
