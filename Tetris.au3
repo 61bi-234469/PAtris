@@ -2566,7 +2566,18 @@ EndFunc
 
 
 Func Copy()
-	ClipPut(StateEncode())
+	If UBound($GRID, 1) <> 10 Or UBound($GRID, 2) <> 24 Then
+		DrawComment(0, 1800, 'FUMEN ERROR', 'Fumen requires 10x24 field.')
+		Return
+	EndIf
+
+	BagFill()
+
+	Local $FumenEncode = FumenBridgeEncode()
+	If $FumenEncode = '' Then $FumenEncode = FumenLegacyEncode()
+	If $FumenEncode = '' Then Return
+
+	ClipPut($FumenEncode)
 EndFunc
 Func Paste()
 	Local $Clipboard = ClipGet()
@@ -2786,7 +2797,7 @@ Func Fumen()
 		EndIf
 	EndIf
 
-	ShellExecute("https://61bi-234469.github.io/fumen-for-mobile-ts/#?d=" & $FumenEncode)
+	ShellExecute("https://61bi-234469.github.io/fumen-mobile-fork/#?d=" & $FumenEncode)
 EndFunc
 Func FumenSelectExportMode()
 	SetHotkeys(1)
@@ -2838,8 +2849,17 @@ Func FumenImport()
 EndFunc
 
 Func FumenLegacy()
+	Local $FumenEncode = FumenLegacyEncode()
+	If $FumenEncode = '' Then Return
+
+	ShellExecute("https://61bi-234469.github.io/fumen-mobile-fork/#?d=" & $FumenEncode)
+EndFunc
+
+Func FumenLegacyEncode()
+	If Not IsArray($Bag) Then Return ''
+	If UBound($Bag) = 0 Then Return ''
+
 	Local $FumenEncode = ""
-	Local $FumenUrl = "https://61bi-234469.github.io/fumen-for-mobile-ts/#?d=v115@"
 	;~ space, I, J, S, O, Z, L, T, garbage
 	Local $ColorToFumenColor = [0, 1, 6, 7, 3, 4, 2, 5, 8]
 
@@ -2932,7 +2952,8 @@ Func FumenLegacy()
 	If $QueueVal > 0 Then
 		$FumenEncode &= _FumenValueEncode($QueueVal, 5)
 	EndIf
-	ShellExecute($FumenUrl & $FumenEncode)
+
+	Return "v115@" & $FumenEncode
 EndFunc
 
 Func FumenBridgeEncode()
@@ -3698,7 +3719,7 @@ Func HoldNextSet()
 	Local $PopupH = 130
 	Local $Popup = GUICreate($WTITLE, $PopupW, $PopupH, $W[0]+$W[2]/2-$PopupW/2, $W[1]+$W[3]/2-$PopupH/2, BitOR($WS_CAPTION, $WS_SYSMENU), -1, $GUI)
 
-	GUICtrlCreateLabel('Set the HOLD/QUEUE (TLJZSOI)', 15, 10, 220, 16)
+	GUICtrlCreateLabel('Set the HOLD/QUEUE or HOLD:QUEUE', 15, 10, 220, 16)
 	Local $Input = GUICtrlCreateInput($Default, 15, 28, 220, 20)
 	Local $Check = GUICtrlCreateCheckbox('Use palette letters', 15, 55, 220, 18)
 	If $HoldNextUsePalette Then GUICtrlSetState($Check, $GUI_CHECKED)
@@ -3728,7 +3749,10 @@ Func HoldNextApply($Input, $UsePalette)
 	Local $Text = StringStripWS($Input, 8)
 	If $Text = '' Then Return
 
-	Local $Sep = StringInStr($Text, '/')
+	Local $SlashSep = StringInStr($Text, '/')
+	Local $ColonSep = StringInStr($Text, ':')
+	Local $Sep = $SlashSep
+	If $Sep = 0 Or ($ColonSep > 0 And $ColonSep < $Sep) Then $Sep = $ColonSep
 	Local $HoldPart = ''
 	Local $QueuePart = ''
 
